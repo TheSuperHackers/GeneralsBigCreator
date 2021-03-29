@@ -50,7 +50,7 @@ public:
 	CFileFinder();
 	~CFileFinder();
 
-	bool Initialize(const wchar_t* rootdir, TFlags flags);
+	bool Initialize(const wchar_t* wcsRootdir, TFlags flags);
 	void Clean();
 
 	uint32 GetFileCount() const { return m_files.size(); }
@@ -71,10 +71,10 @@ public:
 	void ClearPendingFileChanges();
 
 private:
-	void InitializeInternal(const wchar_t* rootdir);
+	void InitializeInternal(const wchar_t* wcsRootdir);
 
-	static void PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, const wchar_t* rootdir, const wchar_t* subdir, CBIGFile::TFlags bigFlags, const uint32 maxHierarchy, uint32 hierarchy = 0);
-	static bool BuildFileDescription(SFileDescription& fileDesc, const wchar_t* fileName, const wchar_t* rootdir, const wchar_t* subdir, CBIGFile::TFlags bigFlags, uint32 hierarchy);
+	static void PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, const uint32 maxHierarchy, uint32 hierarchy = 0);
+	static bool BuildFileDescription(SFileDescription& fileDesc, const wchar_t* fileName, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, uint32 hierarchy);
 	
 	static bool SortFilepathAlphabetical(SFileDescription& left, SFileDescription& right);
 	static void AddTrailingPathSeparator(std::wstring& str);
