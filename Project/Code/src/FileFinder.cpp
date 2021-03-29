@@ -20,18 +20,18 @@ CFileFinder::~CFileFinder()
 	WriteOutPendingFileChanges();
 }
 
-bool CFileFinder::Initialize(const wchar_t* wcsRootdir, TFlags flags)
+bool CFileFinder::Initialize(const wchar_t* wcsRootdir, uint32 maxHierarchy, TFlags flags)
 {
 	if (wcsRootdir != NULL)
 	{
 		m_bigFlags = flags;
-		InitializeInternal(wcsRootdir);
+		InitializeInternal(wcsRootdir, maxHierarchy);
 		return true;
 	}
 	return false;
 }
 
-void CFileFinder::InitializeInternal(const wchar_t* wcsRootdir)
+void CFileFinder::InitializeInternal(const wchar_t* wcsRootdir, uint32 maxHierarchy)
 {
 	std::wstring rootdir;
 	rootdir.assign(wcsRootdir);
@@ -42,7 +42,7 @@ void CFileFinder::InitializeInternal(const wchar_t* wcsRootdir)
 	TFiles loseFiles;
 	TFiles bigFiles;
 
-	PopulateFilesFromRoot(loseFiles, bigFiles, rootdir.c_str(), wcsSubdir, m_bigFlags, 1000);
+	PopulateFilesFromRoot(loseFiles, bigFiles, rootdir.c_str(), wcsSubdir, m_bigFlags, maxHierarchy);
 
 	std::sort(bigFiles.begin(), bigFiles.end(), SortFilepathAlphabetical);
 

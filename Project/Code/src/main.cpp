@@ -7,10 +7,11 @@
 #pragma comment(lib, "Shlwapi.lib")
 
 #define COMMANDLINE_ARG_HELP             "-help"
-#define COMMANDLINE_ARG_SIMPLIFYNAME     "-simplifyname"
-#define COMMANDLINE_ARG_IGNOREDUPLICATES "-ignoreduplicates"
 #define COMMANDLINE_ARG_SOURCE           "-source"
 #define COMMANDLINE_ARG_DESTINATION      "-dest"
+#define COMMANDLINE_ARG_SIMPLIFYNAME     "-simplifyname"
+#define COMMANDLINE_ARG_IGNOREDUPLICATES "-ignoreduplicates"
+#define COMMANDLINE_ARG_MAXHIERARCHY     "-maxhierarchy"
 
 
 void InitRandom()
@@ -24,7 +25,7 @@ void Welcome()
 	std::cout << "---------------------------------" << std::endl;
 }
 
-void ExtractBigFile(const wchar_t* wcsSrc, const wchar_t* wcsDst, bool simplifyNames, bool ignoreDuplicates)
+void ExtractBigFile(const wchar_t* wcsSrc, const wchar_t* wcsDst, uint32 maxHierarchy, bool simplifyNames, bool ignoreDuplicates)
 {
 	CBIGFile::TFlags bigFlags = CBIGFile::eFlags_Read;
 	bigFlags |= simplifyNames ? CBIGFile::eFlags_UseSimplifiedName : 0;
@@ -33,7 +34,7 @@ void ExtractBigFile(const wchar_t* wcsSrc, const wchar_t* wcsDst, bool simplifyN
 	// TODO: Implement
 }
 
-void CreateBigFile(const wchar_t* wcsSrc, const wchar_t* wcsDst, bool simplifyNames, bool ignoreDuplicates)
+void CreateBigFile(const wchar_t* wcsSrc, const wchar_t* wcsDst, uint32 maxHierarchy, bool simplifyNames, bool ignoreDuplicates)
 {
 	CBIGFile::TFlags bigFlags = CBIGFile::eFlags_Write;
 	bigFlags |= simplifyNames ? CBIGFile::eFlags_UseSimplifiedName : 0;
@@ -43,7 +44,7 @@ void CreateBigFile(const wchar_t* wcsSrc, const wchar_t* wcsDst, bool simplifyNa
 	if (bigFile.OpenFile(wcsDst, bigFlags))
 	{
 		CFileFinder fileFinder;
-		fileFinder.Initialize(wcsSrc, 0);
+		fileFinder.Initialize(wcsSrc, maxHierarchy, 0);
 
 		const char* szFileName = fileFinder.GetFirstFileName();
 		
@@ -74,6 +75,7 @@ int main(int argc, wchar_t* argv[])
 	const bool ignoreDuplicates = commandline.HasArg(W(COMMANDLINE_ARG_IGNOREDUPLICATES));
 	const wchar_t* wcsSrc = commandline.FindArgAssignment(W(COMMANDLINE_ARG_SOURCE));
 	const wchar_t* wcsDst = commandline.FindArgAssignment(W(COMMANDLINE_ARG_DESTINATION));
+	const wchar_t* wcsMaxHierarchy = commandline.FindArgAssignment(W(COMMANDLINE_ARG_MAXHIERARCHY));
 
 	if (!wcsSrc || !wcsDst)
 	{
@@ -87,7 +89,8 @@ int main(int argc, wchar_t* argv[])
 			<< COMMANDLINE_ARG_SOURCE           " [PATH|FILE.BIG] > Specifies path to create .big from or big file to extract from" << std::endl
 			<< COMMANDLINE_ARG_DESTINATION      " [PATH|FILE.BIG] > Specifies path to extract to or big file to create .big to" << std::endl
 			<< COMMANDLINE_ARG_SIMPLIFYNAME     " > Simplify working character set in big file" << std::endl
-			<< COMMANDLINE_ARG_IGNOREDUPLICATES " > Ignore duplicates in big file" << std::endl;
+			<< COMMANDLINE_ARG_IGNOREDUPLICATES " > Ignore duplicates in big file" << std::endl
+			<< COMMANDLINE_ARG_MAXHIERARCHY     " [NUM] > Max hierarchy depth to use files from" << std::endl;
 	}
 
 	if (!wcsSrc)
@@ -106,6 +109,7 @@ int main(int argc, wchar_t* argv[])
 	const bool dstBigFile = CBIGFile::HasBigFileExtension(wcsDst);
 	const bool createBigFile = !srcBigFile && dstBigFile;
 	const bool extractBigFile = srcBigFile && !dstBigFile;
+	const uint32 maxHierarchy = wcsMaxHierarchy ? static_cast<uint32>(::_wtoi(wcsMaxHierarchy)) : 999;
 
 	if (!(createBigFile || extractBigFile))
 	{
@@ -117,12 +121,12 @@ int main(int argc, wchar_t* argv[])
 
 	if (extractBigFile)
 	{
-		ExtractBigFile(wcsSrc, wcsDst, simplifyNames, ignoreDuplicates);
+		ExtractBigFile(wcsSrc, wcsDst, maxHierarchy, simplifyNames, ignoreDuplicates);
 	}
 
 	if (createBigFile)
 	{
-		CreateBigFile(wcsSrc, wcsDst, simplifyNames, ignoreDuplicates);
+		CreateBigFile(wcsSrc, wcsDst, maxHierarchy, simplifyNames, ignoreDuplicates);
 	}
 
 	return 0;

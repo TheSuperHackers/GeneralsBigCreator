@@ -50,7 +50,7 @@ public:
 	CFileFinder();
 	~CFileFinder();
 
-	bool Initialize(const wchar_t* wcsRootdir, TFlags flags);
+	bool Initialize(const wchar_t* wcsRootdir, uint32 maxHierarchy, TFlags flags);
 	void Clean();
 
 	uint32 GetFileCount() const { return m_files.size(); }
@@ -71,7 +71,7 @@ public:
 	void ClearPendingFileChanges();
 
 private:
-	void InitializeInternal(const wchar_t* wcsRootdir);
+	void InitializeInternal(const wchar_t* wcsRootdir, uint32 maxHierarchy);
 
 	static void PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, const uint32 maxHierarchy, uint32 hierarchy = 0);
 	static bool BuildFileDescription(SFileDescription& fileDesc, const wchar_t* fileName, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, uint32 hierarchy);
