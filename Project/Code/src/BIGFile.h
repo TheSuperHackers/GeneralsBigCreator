@@ -5,6 +5,7 @@
 #include <fstream>
 #include "types.h"
 #include "utildef.h"
+#include "smartptr.h"
 
 // --- BIG HEADER
 // .BIG signature (4 bytes) - it must be 0x46474942 - 'BIGF'
@@ -25,14 +26,25 @@ class CBIGFile
 {
 public:
 	typedef std::vector<char> TData;
-	typedef std::vector<TData> TDataVector;
+
+	struct SDataRef : public _reference_target_t
+	{
+		explicit SDataRef(const TData& data) : data(data) {}
+
+		TData data;
+	};
+	
+	typedef _smart_ptr<SDataRef> TDataPtr;
+	typedef std::vector<TDataPtr> TDataPtrVector;
 	typedef uint32 TFlags;
 
 	enum EFlags : uint32
 	{
 		eFlags_None              = 0,
-		eFlags_UseSimplifiedName = BIT(0),
-		eFlags_IgnoreDuplicates  = BIT(1),
+		eFlags_Read              = BIT(1),
+		eFlags_Write             = BIT(2),
+		eFlags_UseSimplifiedName = BIT(3),
+		eFlags_IgnoreDuplicates  = BIT(4),
 	};
 
 private:
@@ -53,9 +65,14 @@ private:
 			std::swap(headerSize, other.headerSize);
 		}
 
+		static uint32 GetSignature()
+		{
+			return 'BIGF';
+		}
+
 		inline bool IsGood() const
 		{
-			return bigf == 'BIGF';
+			return bigf == GetSignature();
 		}
 
 		inline bool HasExpectedFileSize(uint64 size) const
@@ -134,18 +151,23 @@ private:
 
 public:
 	CBIGFile();
-	~CBIGFile() {}
+	~CBIGFile();
 
-	bool OpenFile(const wchar_t* fileName, TFlags flags = eFlags_None);
+	bool OpenFile(const wchar_t* wcsBigFileName, TFlags flags);
 	void CloseFile();
 
-	bool IsOpen() const { return m_ifstream.is_open(); }
-	uint32 GetFileCount() const { return m_fileHeaderIndices.size(); }
+	bool IsOpen() const;
+	uint32 GetFileCount() const;
 
 	const char* GetFileNameById(uint32 id) const;
+	uint32      GetCurrentFileId() const;
+
 	const char* GetCurrentFileName() const;
 	const char* GetFirstFileName();
 	const char* GetNextFileName();
+
+	bool AddNewFile(const char* szName, const TData& data, bool immediateWriteOut = false);
+	bool AddNewFile(uint32 id, const char* szName, const TData& data, bool immediateWriteOut = false);
 
 	bool ReadFileDataById(uint32 id, TData& data);
 	bool WriteFileDataById(uint32 id, const TData& data, bool immediateWriteOut = false);
@@ -157,14 +179,17 @@ public:
 	bool WriteOutPendingFileChanges();
 	void ClearPendingFileChanges();
 
-	static bool HasBigFileExtension(const wchar_t* fileName);
+	static bool HasBigFileExtension(const wchar_t* wcsBigFileName);
 
 	static const char* GetSimplifiedCharset();
 	static void ApplySimplifiedCharset(std::string& str);
 
 private:
-	void OpenInputFileStream();
-	void CloseInputFileStream();
+	void OpenFileStream();
+	void CloseFileStream();
+
+	bool BuildFromFileStream();
+	bool BuildDefault();
 
 	const SFileHeader* GetFileHeader(uint32 id) const;
 
@@ -180,8 +205,8 @@ private:
 	static bool ReadLastHeaderFromData(SLastHeader& lastHeader, const TData& data, uint32 offset = 0u);
 	static bool WriteLastHeaderToData(TData& data, const SLastHeader& lastHeader, uint32 offset = 0u);
 
-	static void CreateFileHeaderIndices(TIntegers& fileHeaderIndices, const TFileHeaders& fileHeaders);
-	static void UpdateBigHeaderAndFileHeaders(SBigHeader& bigHeader, TFileHeaders& fileHeaders, const TDataVector& fileDataVector);
+	static void BuildFileHeaderIndices(TIntegers& fileHeaderIndices, const TFileHeaders& fileHeaders);
+	static void BuildBigHeaderAndFileHeaders(SBigHeader& bigHeader, TFileHeaders& fileHeaders, const TDataPtrVector& fileDataVector);
 
 	static uint32 GetSizeOnDisk(const TFileHeaders& fileHeaders);
 	static uint32 GetMaxFileSize(const TFileHeaders& fileHeaders);
@@ -192,12 +217,13 @@ private:
 	SBigHeader m_bigHeader;
 	TFileHeaders m_fileHeaders;
 	SLastHeader m_lastHeader;
-	TDataVector m_fileDataVector;
+	TDataPtrVector m_fileDataVector;
 
+	// Contains indexes to all usable files inside .big file
 	TIntegers m_fileHeaderIndices;
 
-	std::wstring m_filename;
-	std::ifstream m_ifstream;
+	std::wstring m_bigFileName;
+	std::fstream m_fstream;
 
 	uint32 m_fileId;
 	TFlags m_flags;

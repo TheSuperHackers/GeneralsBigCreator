@@ -49,47 +49,32 @@ CBIGFile::CBIGFile()
 {
 }
 
-bool CBIGFile::OpenFile(const wchar_t* fileName, TFlags flags)
+CBIGFile::~CBIGFile()
+{
+	CloseFile();
+}
+
+bool CBIGFile::OpenFile(const wchar_t* wcsBigFileName, TFlags flags)
 {
 	bool success = false;
 
-	if (HasBigFileExtension(fileName))
+	if (HasBigFileExtension(wcsBigFileName))
 	{
 		CloseFile();
-		m_filename = fileName;
+		m_bigFileName = wcsBigFileName;
 		m_flags = flags;
-		OpenInputFileStream();
+		OpenFileStream();
 
-		if (m_ifstream.is_open())
+		if (m_fstream.is_open())
 		{
-			TData headerData;
-			headerData.resize(m_bigHeader.SizeOnDisk());
-
-			if (ReadDataFromStream(headerData, m_ifstream))
+			if (m_flags & eFlags_Read)
 			{
-				if (ReadBigHeaderFromData(m_bigHeader, headerData))
-				{
-#ifndef _RELEASE
-					m_ifstream.seekg(0, std::ios::end);
-					assert(m_bigHeader.HasExpectedFileSize(m_ifstream.tellg()));
-#endif
-					const uint32 fileHeadersOffset = m_bigHeader.SizeOnDisk();
-					const uint32 lastHeaderOffset = m_bigHeader.SizeOnDisk() + m_bigHeader.FileHeaderSize();
-					headerData.resize(m_bigHeader.headerSize);
+				success = BuildFromFileStream();
+			}
 
-					if (ReadDataFromStream(headerData, m_ifstream))
-					{
-						if (ReadFileHeadersFromData(m_fileHeaders, m_bigHeader, headerData, fileHeadersOffset, m_flags))
-						{
-							if (ReadLastHeaderFromData(m_lastHeader, headerData, lastHeaderOffset))
-							{
-								m_fileDataVector.resize(m_fileHeaders.size());
-								CreateFileHeaderIndices(m_fileHeaderIndices, m_fileHeaders);
-								success = true;
-							}
-						}
-					}
-				}
+			if (m_flags & eFlags_Write)
+			{
+				success = BuildDefault();
 			}
 		}
 
@@ -113,22 +98,84 @@ void CBIGFile::CloseFile()
 		utils::ClearMemory(m_fileHeaders);
 		utils::ClearMemory(m_fileDataVector);
 		utils::ClearMemory(m_fileHeaderIndices);
-		utils::ClearMemory(m_filename);
-		CloseInputFileStream();
+		utils::ClearMemory(m_bigFileName);
+		CloseFileStream();
 		m_fileId = 0u;
 		m_flags = eFlags_None;
 	}
 }
 
-void CBIGFile::OpenInputFileStream()
+bool CBIGFile::IsOpen() const
 {
-	std::ios::openmode mode = std::ios::in | std::ios::ate | std::ios::binary;
-	m_ifstream.open(m_filename.c_str(), mode);
+	return m_fstream.is_open();
 }
 
-void CBIGFile::CloseInputFileStream()
+uint32 CBIGFile::GetFileCount() const
 {
-	m_ifstream.close();
+	return m_fileHeaderIndices.size();
+}
+
+void CBIGFile::OpenFileStream()
+{
+	std::ios::openmode mode = std::ios::ate | std::ios::binary;
+	mode |= (m_flags & eFlags_Read) ? std::ios::in : 0;
+	mode |= (m_flags & eFlags_Write) ? std::ios::out : 0;
+	m_fstream.open(m_bigFileName.c_str(), mode);
+}
+
+void CBIGFile::CloseFileStream()
+{
+	m_fstream.close();
+}
+
+bool CBIGFile::BuildFromFileStream()
+{
+	bool success = false;
+	TData headerData;
+	headerData.resize(m_bigHeader.SizeOnDisk());
+
+	if (ReadDataFromStream(headerData, m_fstream))
+	{
+		if (ReadBigHeaderFromData(m_bigHeader, headerData))
+		{
+#ifndef _RELEASE
+			m_fstream.seekg(0, std::ios::end);
+			assert(m_bigHeader.HasExpectedFileSize(m_fstream.tellg()));
+#endif
+			const uint32 fileHeadersOffset = m_bigHeader.SizeOnDisk();
+			const uint32 lastHeaderOffset = m_bigHeader.SizeOnDisk() + m_bigHeader.FileHeaderSize();
+			headerData.resize(m_bigHeader.headerSize);
+
+			if (ReadDataFromStream(headerData, m_fstream))
+			{
+				if (ReadFileHeadersFromData(m_fileHeaders, m_bigHeader, headerData, fileHeadersOffset, m_flags))
+				{
+					if (ReadLastHeaderFromData(m_lastHeader, headerData, lastHeaderOffset))
+					{
+						m_fileDataVector.resize(m_fileHeaders.size());
+						BuildFileHeaderIndices(m_fileHeaderIndices, m_fileHeaders);
+						success = true;
+					}
+				}
+			}
+		}
+	}
+	return success;
+}
+
+bool CBIGFile::BuildDefault()
+{
+	// Subsequent uses need to be read enabled.
+	m_flags |= eFlags_Read;
+
+	// Create empty big header.
+	m_bigHeader.bigf = SBigHeader::GetSignature();
+	BuildBigHeaderAndFileHeaders(m_bigHeader, m_fileHeaders, m_fileDataVector);
+
+	// Set desire to write out changes.
+	m_hasPendingFileChanges = true;
+
+	return true;
 }
 
 bool CBIGFile::ReadDataFromStream(TData& data, std::istream& istream, uint32 offset)
@@ -366,7 +413,7 @@ bool CBIGFile::WriteLastHeaderToData(TData& data, const SLastHeader& lastHeader,
 	return false;
 }
 
-void CBIGFile::CreateFileHeaderIndices(TIntegers& fileHeaderIndices, const TFileHeaders& fileHeaders)
+void CBIGFile::BuildFileHeaderIndices(TIntegers& fileHeaderIndices, const TFileHeaders& fileHeaders)
 {
 	const uint32 fileCount = fileHeaders.size();
 	fileHeaderIndices.clear();
@@ -383,7 +430,7 @@ void CBIGFile::CreateFileHeaderIndices(TIntegers& fileHeaderIndices, const TFile
 	}
 }
 
-void CBIGFile::UpdateBigHeaderAndFileHeaders(SBigHeader& bigHeader, TFileHeaders& fileHeaders, const TDataVector& fileDataVector)
+void CBIGFile::BuildBigHeaderAndFileHeaders(SBigHeader& bigHeader, TFileHeaders& fileHeaders, const TDataPtrVector& fileDataVector)
 {
 	assert(fileHeaders.size() == fileDataVector.size());
 
@@ -397,11 +444,11 @@ void CBIGFile::UpdateBigHeaderAndFileHeaders(SBigHeader& bigHeader, TFileHeaders
 	for (uint32 fileIndex = 0; fileIndex < bigHeader.fileCount; ++fileIndex)
 	{
 		SFileHeader& fileHeader = fileHeaders[fileIndex];
-		const TData& fileData = fileDataVector[fileIndex];
+		const TDataPtr& fileDataPtr = fileDataVector[fileIndex];
 
 		fileHeader.offset = bigHeader.bigFileSize;
-		if (fileData.size() != 0)
-			fileHeader.size = fileData.size();
+		if (fileDataPtr->data.size() != 0)
+			fileHeader.size = fileDataPtr->data.size();
 		bigHeader.bigFileSize += fileHeader.size;
 	}
 }
@@ -447,6 +494,11 @@ const char* CBIGFile::GetFileNameById(uint32 id) const
 	return NULL;
 }
 
+uint32 CBIGFile::GetCurrentFileId() const
+{
+	return m_fileId;
+}
+
 const char* CBIGFile::GetCurrentFileName() const
 {
 	return GetFileNameById(m_fileId);
@@ -460,7 +512,67 @@ const char* CBIGFile::GetFirstFileName()
 
 const char* CBIGFile::GetNextFileName()
 {
-	return GetFileNameById(++m_fileId);
+	m_fileId = (m_fileId < GetFileCount()) ? ++m_fileId : m_fileId;
+	return GetFileNameById(m_fileId);
+}
+
+bool CBIGFile::AddNewFile(const char* szName, const TData& data, bool immediateWriteOut)
+{
+	return AddNewFile(m_fileId, szName, data, immediateWriteOut);
+}
+
+bool CBIGFile::AddNewFile(uint32 id, const char* szName, const TData& data, bool immediateWriteOut)
+{
+	bool success = false;
+
+	SFileHeader newFileHeader;
+	newFileHeader.name = szName;
+	newFileHeader.simplifiedName = szName;
+
+	if (m_flags & eFlags_UseSimplifiedName)
+	{
+		ApplySimplifiedCharset(newFileHeader.simplifiedName);
+	}
+
+	if (id >= GetFileCount())
+	{
+		const uint32 fileIndex = static_cast<uint32>(m_fileHeaders.size());
+
+		// Add new file at end.
+		m_fileId = GetFileCount();
+		m_fileHeaderIndices.push_back(fileIndex);
+		m_fileHeaders.push_back(newFileHeader);
+		m_fileDataVector.push_back(new SDataRef(data));
+	}
+	else
+	{
+		const uint32 fileIndex = m_fileHeaderIndices[m_fileId];
+
+		// Add new file at begin or middle.
+		m_fileHeaders.insert(m_fileHeaders.begin() + fileIndex, newFileHeader);
+		m_fileDataVector.insert(m_fileDataVector.begin() + fileIndex, new SDataRef(data));
+
+		// Rebuild file header indices.
+		BuildFileHeaderIndices(m_fileHeaderIndices, m_fileHeaders);
+	}
+
+	// Rebuild headers with new data added.
+	BuildBigHeaderAndFileHeaders(m_bigHeader, m_fileHeaders, m_fileDataVector);
+
+	// Write out pending changes if necessary.
+	if (immediateWriteOut)
+	{
+		success = WriteOutPendingFileChanges();
+		if (!success)
+			m_hasPendingFileChanges = true;
+	}
+	else
+	{
+		success = true;
+		m_hasPendingFileChanges = true;
+	}
+
+	return success;
 }
 
 bool CBIGFile::ReadFileDataById(uint32 id, TData& data)
@@ -469,12 +581,12 @@ bool CBIGFile::ReadFileDataById(uint32 id, TData& data)
 	if (id < m_fileHeaderIndices.size())
 	{
 		const uint32 index = m_fileHeaderIndices[id];
-		const TData& internalData = m_fileDataVector[index];
+		const TDataPtr& internalDataPtr = m_fileDataVector[index];
 
-		if (!internalData.empty())
+		if (!internalDataPtr->data.empty())
 		{
 			// Get data that is not yet written out to the .big file
-			data = internalData;
+			data = internalDataPtr->data;
 			success = true;
 		}
 		else
@@ -482,7 +594,7 @@ bool CBIGFile::ReadFileDataById(uint32 id, TData& data)
 			// Get data that is in the .big file on disk
 			const SFileHeader& fileHeader = m_fileHeaders[index];
 			data.resize(fileHeader.size);
-			success = ReadDataFromStream(data, m_ifstream, fileHeader.offset);
+			success = ReadDataFromStream(data, m_fstream, fileHeader.offset);
 		}
 	}
 	return success;
@@ -494,7 +606,7 @@ bool CBIGFile::WriteFileDataById(uint32 id, const TData& data, bool immediateWri
 	if (id < m_fileHeaderIndices.size())
 	{
 		const uint32 index = m_fileHeaderIndices[id];
-		m_fileDataVector[index] = data;
+		m_fileDataVector[index] = new SDataRef(data);
 
 		if (immediateWriteOut)
 		{
@@ -527,7 +639,7 @@ bool CBIGFile::HasPendingFileChanges() const
 	const uint32 fileCount = m_fileDataVector.size();
 	for (uint32 fileIndex = 0; fileIndex < fileCount; ++fileIndex)
 	{
-		if (!m_fileDataVector[fileIndex].empty())
+		if (!m_fileDataVector[fileIndex]->data.empty())
 		{
 			hasChanges = true;
 			break;
@@ -545,12 +657,12 @@ bool CBIGFile::WriteOutPendingFileChanges()
 	if (m_hasPendingFileChanges)
 	{
 		bool newFileCreated = false;
-		const std::wstring newFilename = utils::AppendRandomNumbers(m_filename, 8);
-		const TDataVector& newFileDataVector = m_fileDataVector;
+		const std::wstring newFilename = utils::AppendRandomNumbers(m_bigFileName, 8);
+		const TDataPtrVector& newFileDataVector = m_fileDataVector;
 
 		try
 		{
-			if (m_ifstream.is_open() && m_ifstream.good())
+			if (m_fstream.is_open() && m_fstream.good())
 			{
 				std::ios::openmode mode = std::ios::out | std::ios::binary;
 				std::ofstream ofstream;
@@ -563,7 +675,7 @@ bool CBIGFile::WriteOutPendingFileChanges()
 					TFileHeaders newFileHeaders = m_fileHeaders;
 					SLastHeader newLastHeader = m_lastHeader;
 
-					UpdateBigHeaderAndFileHeaders(newBigHeader, newFileHeaders, newFileDataVector);
+					BuildBigHeaderAndFileHeaders(newBigHeader, newFileHeaders, newFileDataVector);
 
 					const uint32 bigHeaderSize = newBigHeader.SizeOnDisk();
 					const uint32 fileHeadersSize = GetSizeOnDisk(newFileHeaders);
@@ -588,42 +700,42 @@ bool CBIGFile::WriteOutPendingFileChanges()
 						for (uint32 fileIndex = 0; fileIndex < fileCount; ++fileIndex)
 						{
 							const SFileHeader& fileHeader = m_fileHeaders[fileIndex];
-							const TData& newFileData = newFileDataVector[fileIndex];
-							if (newFileData.empty())
+							const TDataPtr& newFileDataPtr = newFileDataVector[fileIndex];
+							if (newFileDataPtr->data.empty())
 							{
 								// Transfer file data from original .big file to new .big file
 								fileData.resize(fileHeader.size);
-								ok = ok && ReadDataFromStream(fileData, m_ifstream, fileHeader.offset);
+								ok = ok && ReadDataFromStream(fileData, m_fstream, fileHeader.offset);
 								ok = ok && WriteDataToStream(fileData, ofstream);
 							}
 							else
 							{
 								// Save new file data to new .big file
-								ok = ok && WriteDataToStream(newFileData, ofstream);
+								ok = ok && WriteDataToStream(newFileDataPtr->data, ofstream);
 							}
 						}
 
 						if (ok)
 						{
 							ofstream.close();
-							CloseInputFileStream();
+							CloseFileStream();
 
 							// Replace the new written file with the original file
-							if (::DeleteFileW(m_filename.c_str()) != FALSE)
+							if (::DeleteFileW(m_bigFileName.c_str()) != FALSE)
 							{
-								if (::MoveFileW(newFilename.c_str(), m_filename.c_str()) != FALSE)
+								if (::MoveFileW(newFilename.c_str(), m_bigFileName.c_str()) != FALSE)
 								{
 									m_bigHeader = newBigHeader;
 									m_fileHeaders.swap(newFileHeaders);
 									m_lastHeader = newLastHeader;
 									ClearPendingFileChanges();
-									CreateFileHeaderIndices(m_fileHeaderIndices, m_fileHeaders);
+									BuildFileHeaderIndices(m_fileHeaderIndices, m_fileHeaders);
 									newFileCreated = false;
 									m_hasPendingFileChanges = false;
 								}
 							}
 
-							OpenInputFileStream();
+							OpenFileStream();
 						}
 					}
 				}
@@ -649,25 +761,25 @@ void CBIGFile::ClearPendingFileChanges()
 	const uint32 fileCount = m_fileDataVector.size();
 	for (uint32 fileIndex = 0; fileIndex < fileCount; ++fileIndex)
 	{
-		m_fileDataVector[fileIndex].clear();
+		m_fileDataVector[fileIndex].reset();
 	}
 }
 
-bool CBIGFile::HasBigFileExtension(const wchar_t* fileName)
+bool CBIGFile::HasBigFileExtension(const wchar_t* wcsBigFileName)
 {
 	// Note that the game also loads a .big file if it is called .big__
 	// File extension is also case insensitive
 	const size_t len = 3;
-	size_t i = ::wcslen(fileName);
+	size_t i = ::wcslen(wcsBigFileName);
 
 	if (i > len)
 	{
 		while (--i)
 		{
-			if (fileName[i] == L'.')
+			if (wcsBigFileName[i] == L'.')
 			{
 				const wchar_t* ext = L"big";
-				return ::_wcsnicmp(&fileName[i+1], ext, len) == 0;
+				return ::_wcsnicmp(&wcsBigFileName[i+1], ext, len) == 0;
 			}
 		}
 	}
