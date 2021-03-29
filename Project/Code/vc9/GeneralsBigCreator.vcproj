@@ -208,14 +208,6 @@
 				>
 			</File>
 			<File
-				RelativePath="..\src\strlcpy.cpp"
-				>
-			</File>
-			<File
-				RelativePath="..\src\strlcpy.h"
-				>
-			</File>
-			<File
 				RelativePath="..\src\types.h"
 				>
 			</File>
