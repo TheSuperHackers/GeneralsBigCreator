@@ -3,6 +3,10 @@
 
 #define BIT(x)   (1<<(x))
 
+// const wchar_t* var = W("Text");
+#define W_0(x) L ## x
+#define W(x)   W_0(x)
+
 // int array[3];
 // size_t size = ARRAY_SIZE(array);
 #define ARRAY_SIZE(arr)   sizeof(*Detail::ArraySizeHelper(arr))

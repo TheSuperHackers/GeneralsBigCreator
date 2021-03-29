@@ -172,7 +172,27 @@
 				>
 			</File>
 			<File
+				RelativePath="..\src\commandline.h"
+				>
+			</File>
+			<File
 				RelativePath="..\src\compiler.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\FileAccess.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\src\FileAccess.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\FileFinder.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\src\FileFinder.h"
 				>
 			</File>
 			<File
@@ -185,6 +205,14 @@
 			</File>
 			<File
 				RelativePath="..\src\smartptr.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\strlcpy.cpp"
+				>
+			</File>
+			<File
+				RelativePath="..\src\strlcpy.h"
 				>
 			</File>
 			<File
