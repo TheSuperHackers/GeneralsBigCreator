@@ -102,14 +102,14 @@ int main(int argc, wchar_t* argv[])
 	if (help)
 	{
 		std::cout
-		<< "Help: -argument [Type1|Type2 {Default}]" << std::endl
-		<< COMMANDLINE_ARG_SOURCE "           [PATH|FILE.BIG {}] -> Specifies path to create .big from or big file to extract from" << std::endl
-		<< COMMANDLINE_ARG_DEST "             [PATH|FILE.BIG {}] -> Specifies path to extract to or big file to create .big to"     << std::endl
-		<< COMMANDLINE_ARG_SIMPLIFYNAMES "    [{}]               -> Simplify file names in big file"                                << std::endl
-		<< COMMANDLINE_ARG_IGNOREDUPLICATES " [{}]               -> Ignore file duplicates in big file"                             << std::endl
-		<< COMMANDLINE_ARG_PREFIXNAMES "      [STRING {}]        -> Prefix file names in created big file"                          << std::endl
-		<< COMMANDLINE_ARG_SOURCEMAXDEPTH "   [NUMBER {999}]     -> Max folder depth to use files from"                             << std::endl
-		<< COMMANDLINE_ARG_SOURCEWILDCARD "   [STRING {*.*}]     -> Max folder depth to use files from"                             << std::endl;
+		<< "h: " << "ARGUMENT"              "          [TYPE1|TYPE2 {default}]"                                                              << std::endl
+		<< "   " << COMMANDLINE_ARG_SOURCE "           [PATH|FILE.BIG {}] -> Specifies path to create .big from or big file to extract from" << std::endl
+		<< "   " << COMMANDLINE_ARG_DEST "             [PATH|FILE.BIG {}] -> Specifies path to extract to or big file to create .big to"     << std::endl
+		<< "   " << COMMANDLINE_ARG_SIMPLIFYNAMES "    [{}]               -> Simplify file names in big file"                                << std::endl
+		<< "   " << COMMANDLINE_ARG_IGNOREDUPLICATES " [{}]               -> Ignore file duplicates in big file"                             << std::endl
+		<< "   " << COMMANDLINE_ARG_PREFIXNAMES "      [STRING {}]        -> Prefix file names in created big file"                          << std::endl
+		<< "   " << COMMANDLINE_ARG_SOURCEMAXDEPTH "   [NUMBER {999}]     -> Max folder depth to use files from"                             << std::endl
+		<< "   " << COMMANDLINE_ARG_SOURCEWILDCARD "   [STRING {*.*}]     -> Filter for file name or extension"                              << std::endl;
 	}
 
 	if (!wcsSrc)
