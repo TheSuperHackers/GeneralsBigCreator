@@ -101,7 +101,10 @@ private:
 		SFileHeader()
 			: offset(0)
 			, size(0)
+			, name()
+			, simplifiedName()
 			, ignore(false)
+			, physical(false)
 		{}
 
 		void Swap(SFileHeader& other)
@@ -111,6 +114,7 @@ private:
 			std::swap(name, other.name);
 			std::swap(simplifiedName, other.simplifiedName);
 			std::swap(ignore, other.ignore);
+			std::swap(physical, other.physical);
 		}
 
 		inline bool IsGood() const
@@ -128,6 +132,7 @@ private:
 		std::string name;           // File name that this header refers to and is reflected in the actual .big file
 		std::string simplifiedName; // File name that this header refers to and is reflected to the user of this class
 		bool ignore;                // Whether or not this header is ignored for access
+		bool physical;              // Whether ot not this file already exists on disk
 	};
 
 	struct SLastHeader
@@ -149,6 +154,16 @@ private:
 	typedef std::vector<SFileHeader> TFileHeaders;
 	typedef std::vector<uint32> TIntegers;
 
+	struct SHeader
+	{
+		void Swap(SHeader& other);
+		void Clear();
+
+		SBigHeader bigHeader;
+		TFileHeaders fileHeaders;
+		SLastHeader lastHeader;
+	};
+
 public:
 	CBIGFile();
 	~CBIGFile();
@@ -161,6 +176,7 @@ public:
 
 	bool        SetFileNameById(uint32 id, const char* szName);
 	const char* GetFileNameById(uint32 id) const;
+	void        SetCurrentFileId(uint32 id);
 	uint32      GetCurrentFileId() const;
 
 	bool        SetCurrentFileName(const char* szName);
@@ -217,9 +233,10 @@ private:
 private:
 	static const char s_simplified_charset[256];
 
-	SBigHeader m_bigHeader;
-	TFileHeaders m_fileHeaders;
-	SLastHeader m_lastHeader;
+	SHeader m_workingHeader;
+	SHeader m_physicalHeader;
+
+	// File data that exists in memory only and can be written to .big file
 	TDataPtrVector m_fileDataVector;
 
 	// Contains indexes to all usable files inside .big file
