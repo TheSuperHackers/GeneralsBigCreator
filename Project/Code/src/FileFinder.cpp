@@ -20,18 +20,18 @@ CFileFinder::~CFileFinder()
 	WriteOutPendingFileChanges();
 }
 
-bool CFileFinder::Initialize(const wchar_t* wcsRootdir, uint32 maxHierarchy, TFlags flags)
+bool CFileFinder::Initialize(const wchar_t* wcsRootdir, const wchar_t* wcsWildcard, uint32 maxDepth, TFlags flags)
 {
 	if (wcsRootdir != NULL)
 	{
 		m_bigFlags = flags;
-		InitializeInternal(wcsRootdir, maxHierarchy);
+		InitializeInternal(wcsRootdir, wcsWildcard, maxDepth);
 		return true;
 	}
 	return false;
 }
 
-void CFileFinder::InitializeInternal(const wchar_t* wcsRootdir, uint32 maxHierarchy)
+void CFileFinder::InitializeInternal(const wchar_t* wcsRootdir, const wchar_t* wcsWildcard, uint32 maxDepth)
 {
 	std::wstring rootdir;
 	rootdir.assign(wcsRootdir);
@@ -42,7 +42,7 @@ void CFileFinder::InitializeInternal(const wchar_t* wcsRootdir, uint32 maxHierar
 	TFiles loseFiles;
 	TFiles bigFiles;
 
-	PopulateFilesFromRoot(loseFiles, bigFiles, rootdir.c_str(), wcsSubdir, m_bigFlags, maxHierarchy);
+	PopulateFilesFromRoot(loseFiles, bigFiles, rootdir.c_str(), wcsSubdir, wcsWildcard, m_bigFlags, maxDepth);
 
 	std::sort(bigFiles.begin(), bigFiles.end(), SortFilepathAlphabetical);
 
@@ -70,21 +70,28 @@ void CFileFinder::Clean()
 	m_subFileId = InvalidFileId;
 }
 
-void CFileFinder::PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, const uint32 maxHierarchy, uint32 hierarchy)
+void CFileFinder::PopulateFilesFromRoot(TFiles& loseFiles,
+										TFiles& bigFiles,
+										const wchar_t* wcsRootdir,
+										const wchar_t* wcsSubdir,
+										const wchar_t* wcsWildcard,
+										CBIGFile::TFlags bigFlags,
+										const uint32 maxDepth,
+										uint32 depth)
 {
-	std::wstring wildcard;
-	wildcard.reserve(MAX_PATH);
-	wildcard.assign(wcsRootdir).append(wcsSubdir).append(L"*.*");
+	std::wstring searchDir;
+	searchDir.reserve(MAX_PATH);
+	searchDir.assign(wcsRootdir).append(wcsSubdir).append(wcsWildcard);
 
 	WIN32_FIND_DATAW win32fd;
-	HANDLE hFile = ::FindFirstFileW(wildcard.c_str(), &win32fd);
+	HANDLE hFile = ::FindFirstFileW(searchDir.c_str(), &win32fd);
 
 	if (hFile != INVALID_HANDLE_VALUE)
 	{
 		std::wstring newSubdir;
 		newSubdir.reserve(MAX_PATH);
 
-		if (hierarchy == 0)
+		if (depth == 0)
 		{
 			// When in root directory, look here into files first before going into sub folders
 
@@ -93,7 +100,7 @@ void CFileFinder::PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, con
 				if (!(win32fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
 				{
 					SFileDescription fileDesc;
-					if (BuildFileDescription(fileDesc, win32fd.cFileName, wcsRootdir, wcsSubdir, bigFlags, hierarchy))
+					if (BuildFileDescription(fileDesc, win32fd.cFileName, wcsRootdir, wcsSubdir, bigFlags, depth))
 					{
 						TFiles& files = fileDesc.isBigFile ? bigFiles : loseFiles;
 						files.push_back(SFileDescription());
@@ -104,13 +111,13 @@ void CFileFinder::PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, con
 			while (::FindNextFile(hFile, &win32fd));
 
 			::FindClose(hFile);
-			hFile = ::FindFirstFileW(wildcard.c_str(), &win32fd);
+			hFile = ::FindFirstFileW(searchDir.c_str(), &win32fd);
 
 			do
 			{
 				if (win32fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				{
-					if (hierarchy < maxHierarchy)
+					if (depth < maxDepth)
 					{
 						if (::wcscmp(win32fd.cFileName, L".") == 0)
 							continue;
@@ -119,7 +126,7 @@ void CFileFinder::PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, con
 
 						newSubdir.assign(wcsSubdir).append(win32fd.cFileName);
 						AddTrailingPathSeparator(newSubdir);
-						PopulateFilesFromRoot(loseFiles, bigFiles, wcsRootdir, newSubdir.c_str(), bigFlags, maxHierarchy, hierarchy + 1);
+						PopulateFilesFromRoot(loseFiles, bigFiles, wcsRootdir, newSubdir.c_str(), wcsWildcard, bigFlags, maxDepth, depth + 1);
 					}
 				}
 			}
@@ -135,7 +142,7 @@ void CFileFinder::PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, con
 			{
 				if (win32fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 				{
-					if (hierarchy < maxHierarchy)
+					if (depth < maxDepth)
 					{
 						if (::wcscmp(win32fd.cFileName, L".") == 0)
 							continue;
@@ -144,13 +151,13 @@ void CFileFinder::PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, con
 
 						newSubdir.assign(wcsSubdir).append(win32fd.cFileName);
 						AddTrailingPathSeparator(newSubdir);
-						PopulateFilesFromRoot(loseFiles, bigFiles, wcsRootdir, newSubdir.c_str(), bigFlags, maxHierarchy, hierarchy + 1);
+						PopulateFilesFromRoot(loseFiles, bigFiles, wcsRootdir, newSubdir.c_str(), wcsWildcard, bigFlags, maxDepth, depth + 1);
 					}
 				}
 				else
 				{
 					SFileDescription fileDesc;
-					if (BuildFileDescription(fileDesc, win32fd.cFileName, wcsRootdir, wcsSubdir, bigFlags, hierarchy))
+					if (BuildFileDescription(fileDesc, win32fd.cFileName, wcsRootdir, wcsSubdir, bigFlags, depth))
 					{
 						TFiles& files = fileDesc.isBigFile ? bigFiles : loseFiles;
 						files.push_back(SFileDescription());
@@ -165,7 +172,12 @@ void CFileFinder::PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, con
 	}
 }
 
-bool CFileFinder::BuildFileDescription(SFileDescription& fileDesc, const wchar_t* fileName, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, uint32 hierarchy)
+bool CFileFinder::BuildFileDescription(SFileDescription& fileDesc,
+									   const wchar_t* fileName,
+									   const wchar_t* wcsRootdir,
+									   const wchar_t* wcsSubdir,
+									   CBIGFile::TFlags bigFlags,
+									   uint32 depth)
 {
 	// File names can be converted to ANSI, because the game does not use Unicode file names
 	// For simplicity convert name to lower case by using simplified char set
@@ -192,7 +204,7 @@ bool CFileFinder::BuildFileDescription(SFileDescription& fileDesc, const wchar_t
 		fileDesc.path.swap(path);
 		fileDesc.name.swap(name);
 		fileDesc.simplifiedName.swap(simplifiedName);
-		fileDesc.hierarchy = hierarchy;
+		fileDesc.depth = depth;
 
 		if (CBIGFile::HasBigFileExtension(fileName))
 		{

@@ -12,7 +12,7 @@ struct SFileDescription
 		: path()
 		, name()
 		, simplifiedName()
-		, hierarchy(0)
+		, depth(0)
 		, isBigFile(false)
 	{}
 
@@ -21,14 +21,14 @@ struct SFileDescription
 		std::swap(path, other.path);
 		std::swap(name, other.name);
 		std::swap(simplifiedName, other.simplifiedName);
-		std::swap(hierarchy, other.hierarchy);
+		std::swap(depth, other.depth);
 		std::swap(isBigFile, other.isBigFile);
 	}
 
 	std::wstring path;
 	std::string name;
 	std::string simplifiedName;
-	uint32 hierarchy;
+	uint32 depth;
 	bool isBigFile;
 };
 
@@ -50,7 +50,7 @@ public:
 	CFileFinder();
 	~CFileFinder();
 
-	bool Initialize(const wchar_t* wcsRootdir, uint32 maxHierarchy, TFlags flags);
+	bool Initialize(const wchar_t* wcsRootdir, const wchar_t* wcsWildcard = L"*.*", uint32 maxDepth = 999, TFlags flags = 0);
 	void Clean();
 
 	uint32 GetFileCount() const { return m_files.size(); }
@@ -71,10 +71,10 @@ public:
 	void ClearPendingFileChanges();
 
 private:
-	void InitializeInternal(const wchar_t* wcsRootdir, uint32 maxHierarchy);
+	void InitializeInternal(const wchar_t* wcsRootdir, const wchar_t* wcsWildcard, uint32 maxDepth);
 
-	static void PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, const uint32 maxHierarchy, uint32 hierarchy = 0);
-	static bool BuildFileDescription(SFileDescription& fileDesc, const wchar_t* fileName, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, uint32 hierarchy);
+	static void PopulateFilesFromRoot(TFiles& loseFiles, TFiles& bigFiles, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, const wchar_t* wcsWildcard, CBIGFile::TFlags bigFlags, const uint32 maxDepth, uint32 depth = 0);
+	static bool BuildFileDescription(SFileDescription& fileDesc, const wchar_t* fileName, const wchar_t* wcsRootdir, const wchar_t* wcsSubdir, CBIGFile::TFlags bigFlags, uint32 depth);
 	
 	static bool SortFilepathAlphabetical(SFileDescription& left, SFileDescription& right);
 	static void AddTrailingPathSeparator(std::wstring& str);
