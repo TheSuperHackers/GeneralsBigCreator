@@ -159,9 +159,11 @@ public:
 	bool IsOpen() const;
 	uint32 GetFileCount() const;
 
+	bool        SetFileNameById(uint32 id, const char* szName);
 	const char* GetFileNameById(uint32 id) const;
 	uint32      GetCurrentFileId() const;
 
+	bool        SetCurrentFileName(const char* szName);
 	const char* GetCurrentFileName() const;
 	const char* GetFirstFileName();
 	const char* GetNextFileName();
@@ -191,6 +193,7 @@ private:
 	bool BuildFromFileStream();
 	bool BuildDefault();
 
+	SFileHeader* GetFileHeader(uint32 id);
 	const SFileHeader* GetFileHeader(uint32 id) const;
 
 	static bool ReadDataFromStream(TData& data, std::istream& istream, uint32 offset = 0u);

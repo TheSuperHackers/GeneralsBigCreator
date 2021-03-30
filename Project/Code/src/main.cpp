@@ -1,6 +1,7 @@
 #include "BIGFile.h"
 #include "FileFinder.h"
 #include "commandline.h"
+#include "utils.h"
 #include <ctime>
 #include <iostream>
 
@@ -8,9 +9,9 @@
 
 #define COMMANDLINE_ARG_HELP             "-help"
 #define COMMANDLINE_ARG_SOURCE           "-source"
-#define COMMANDLINE_ARG_MAXDEPTH         "-sourcemaxdepth"
-#define COMMANDLINE_ARG_WILDCARD         "-sourcewildcard"
-#define COMMANDLINE_ARG_DESTINATION      "-dest"
+#define COMMANDLINE_ARG_SOURCEMAXDEPTH   "-sourcemaxdepth"
+#define COMMANDLINE_ARG_SOURCEWILDCARD   "-sourcewildcard"
+#define COMMANDLINE_ARG_DEST             "-dest"
 #define COMMANDLINE_ARG_PREFIXNAMES      "-prefixnames"
 #define COMMANDLINE_ARG_SIMPLIFYNAMES    "-simplifynames"
 #define COMMANDLINE_ARG_IGNOREDUPLICATES "-ignoreduplicates"
@@ -27,7 +28,11 @@ void Welcome()
 	std::cout << "---------------------------------" << std::endl;
 }
 
-void ExtractBigFile(const wchar_t* wcsSrc, const wchar_t* wcsDst, uint32 maxHierarchy, bool simplifyNames, bool ignoreDuplicates)
+void ExtractBigFile(const wchar_t* wcsSrc,
+					const wchar_t* wcsDst,
+					uint32 maxDepth,
+					bool simplifyNames,
+					bool ignoreDuplicates)
 {
 	CBIGFile::TFlags bigFlags = CBIGFile::eFlags_Read;
 	bigFlags |= simplifyNames ? CBIGFile::eFlags_UseSimplifiedName : 0;
@@ -36,7 +41,13 @@ void ExtractBigFile(const wchar_t* wcsSrc, const wchar_t* wcsDst, uint32 maxHier
 	// TODO: Implement
 }
 
-void CreateBigFile(const wchar_t* wcsSrc, const wchar_t* wcsWildcard, const wchar_t* wcsDst, uint32 maxHierarchy, bool simplifyNames, bool ignoreDuplicates)
+void CreateBigFile(const wchar_t* wcsSrc,
+				   const wchar_t* wcsWildcard,
+				   const wchar_t* wcsDst,
+				   uint32 maxDepth,
+				   const char* szPrefix,
+				   bool simplifyNames,
+				   bool ignoreDuplicates)
 {
 	CBIGFile::TFlags bigFlags = CBIGFile::eFlags_Write;
 	bigFlags |= simplifyNames ? CBIGFile::eFlags_UseSimplifiedName : 0;
@@ -46,7 +57,7 @@ void CreateBigFile(const wchar_t* wcsSrc, const wchar_t* wcsWildcard, const wcha
 	if (bigFile.OpenFile(wcsDst, bigFlags))
 	{
 		CFileFinder fileFinder;
-		fileFinder.Initialize(wcsSrc, wcsWildcard, maxHierarchy, CBIGFile::eFlags_None);
+		fileFinder.Initialize(wcsSrc, wcsWildcard, maxDepth, CBIGFile::eFlags_None);
 
 		const char* szFileName = fileFinder.GetFirstFileName();
 		
@@ -58,7 +69,9 @@ void CreateBigFile(const wchar_t* wcsSrc, const wchar_t* wcsWildcard, const wcha
 			CBIGFile::TData data;
 			if (fileFinder.ReadDataFromCurrentFile(data) == fileaccess::eError_Success)
 			{
-				bigFile.AddNewFile(szFileName, data);
+				std::string fullFileName;
+				fullFileName.append(szPrefix).append(szFileName);
+				bigFile.AddNewFile(fullFileName.c_str(), data);
 			}
 		}
 		while (szFileName = fileFinder.GetNextFileName());
@@ -76,9 +89,10 @@ int main(int argc, wchar_t* argv[])
 	const bool simplifyNames = commandline.HasArg(W(COMMANDLINE_ARG_SIMPLIFYNAMES));
 	const bool ignoreDuplicates = commandline.HasArg(W(COMMANDLINE_ARG_IGNOREDUPLICATES));
 	const wchar_t* wcsSrc = commandline.FindArgAssignment(W(COMMANDLINE_ARG_SOURCE));
-	const wchar_t* wcsDst = commandline.FindArgAssignment(W(COMMANDLINE_ARG_DESTINATION));
-	const wchar_t* wcsMaxDepth = commandline.FindArgAssignment(W(COMMANDLINE_ARG_MAXDEPTH));
-	const wchar_t* wcsWildcard = commandline.FindArgAssignment(W(COMMANDLINE_ARG_WILDCARD));
+	const wchar_t* wcsDst = commandline.FindArgAssignment(W(COMMANDLINE_ARG_DEST));
+	const wchar_t* wcsPrefixNames = commandline.FindArgAssignment(W(COMMANDLINE_ARG_PREFIXNAMES));
+	const wchar_t* wcsMaxDepth = commandline.FindArgAssignment(W(COMMANDLINE_ARG_SOURCEMAXDEPTH));
+	const wchar_t* wcsWildcard = commandline.FindArgAssignment(W(COMMANDLINE_ARG_SOURCEWILDCARD));
 
 	if (!wcsSrc || !wcsDst)
 	{
@@ -88,13 +102,14 @@ int main(int argc, wchar_t* argv[])
 	if (help)
 	{
 		std::cout
-		<< "Help: [ArgumentType {Default}]" << std::endl
-		<< COMMANDLINE_ARG_SOURCE " [PATH|FILE.BIG {}] > Specifies path to create .big from or big file to extract from" << std::endl
-		<< COMMANDLINE_ARG_DESTINATION " [PATH|FILE.BIG {}] > Specifies path to extract to or big file to create .big to" << std::endl
-		<< COMMANDLINE_ARG_SIMPLIFYNAMES " [{0}] > Simplify file names in big file" << std::endl
-		<< COMMANDLINE_ARG_IGNOREDUPLICATES " [{0}] > Ignore file duplicates in big file" << std::endl
-		<< COMMANDLINE_ARG_MAXDEPTH " [NUM {999}] > Max folder depth to use files from" << std::endl
-		<< COMMANDLINE_ARG_WILDCARD " [STRING {*.*}] > Max folder depth to use files from" << std::endl;
+		<< "Help: -argument [Type1|Type2 {Default}]" << std::endl
+		<< COMMANDLINE_ARG_SOURCE "           [PATH|FILE.BIG {}] -> Specifies path to create .big from or big file to extract from" << std::endl
+		<< COMMANDLINE_ARG_DEST "             [PATH|FILE.BIG {}] -> Specifies path to extract to or big file to create .big to"     << std::endl
+		<< COMMANDLINE_ARG_SIMPLIFYNAMES "    [{}]               -> Simplify file names in big file"                                << std::endl
+		<< COMMANDLINE_ARG_IGNOREDUPLICATES " [{}]               -> Ignore file duplicates in big file"                             << std::endl
+		<< COMMANDLINE_ARG_PREFIXNAMES "      [STRING {}]        -> Prefix file names in created big file"                          << std::endl
+		<< COMMANDLINE_ARG_SOURCEMAXDEPTH "   [NUMBER {999}]     -> Max folder depth to use files from"                             << std::endl
+		<< COMMANDLINE_ARG_SOURCEWILDCARD "   [STRING {*.*}]     -> Max folder depth to use files from"                             << std::endl;
 	}
 
 	if (!wcsSrc)
@@ -105,7 +120,7 @@ int main(int argc, wchar_t* argv[])
 
 	if (!wcsDst)
 	{
-		std::cout << "Error: missing argument for " COMMANDLINE_ARG_DESTINATION << std::endl;
+		std::cout << "Error: missing argument for " COMMANDLINE_ARG_DEST << std::endl;
 		return 1;
 	}
 
@@ -118,7 +133,13 @@ int main(int argc, wchar_t* argv[])
 	const bool dstBigFile = CBIGFile::HasBigFileExtension(wcsDst);
 	const bool createBigFile = !srcBigFile && dstBigFile;
 	const bool extractBigFile = srcBigFile && !dstBigFile;
-	const uint32 maxHierarchy = wcsMaxDepth ? static_cast<uint32>(::_wtoi(wcsMaxDepth)) : 999;
+	const uint32 maxDepth = wcsMaxDepth ? static_cast<uint32>(::_wtoi(wcsMaxDepth)) : 999;
+	std::string prefixNames;
+	
+	if (wcsPrefixNames)
+	{
+		utils::AppendWideString(prefixNames, wcsPrefixNames);
+	}
 
 	if (!(createBigFile || extractBigFile))
 	{
@@ -130,12 +151,12 @@ int main(int argc, wchar_t* argv[])
 
 	if (extractBigFile)
 	{
-		ExtractBigFile(wcsSrc, wcsDst, maxHierarchy, simplifyNames, ignoreDuplicates);
+		ExtractBigFile(wcsSrc, wcsDst, maxDepth, simplifyNames, ignoreDuplicates);
 	}
 
 	if (createBigFile)
 	{
-		CreateBigFile(wcsSrc, wcsWildcard, wcsDst, maxHierarchy, simplifyNames, ignoreDuplicates);
+		CreateBigFile(wcsSrc, wcsWildcard, wcsDst, maxDepth, prefixNames.c_str(), simplifyNames, ignoreDuplicates);
 	}
 
 	return 0;

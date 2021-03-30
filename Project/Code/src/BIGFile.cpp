@@ -475,6 +475,16 @@ uint32 CBIGFile::GetMaxFileSize(const TFileHeaders& fileHeaders)
 	return maxFileSize;
 }
 
+CBIGFile::SFileHeader* CBIGFile::GetFileHeader(uint32 id)
+{
+	if (id < m_fileHeaderIndices.size())
+	{
+		const uint32 index = m_fileHeaderIndices[id];
+		return &m_fileHeaders[index];
+	}
+	return NULL;
+}
+
 const CBIGFile::SFileHeader* CBIGFile::GetFileHeader(uint32 id) const
 {
 	if (id < m_fileHeaderIndices.size())
@@ -483,6 +493,22 @@ const CBIGFile::SFileHeader* CBIGFile::GetFileHeader(uint32 id) const
 		return &m_fileHeaders[index];
 	}
 	return NULL;
+}
+
+bool CBIGFile::SetFileNameById(uint32 id, const char* szName)
+{
+	if (SFileHeader* pFileHeader = GetFileHeader(id))
+	{
+		pFileHeader->name = szName;
+		pFileHeader->simplifiedName = szName;
+
+		if (m_flags & eFlags_UseSimplifiedName)
+		{
+			ApplySimplifiedCharset(pFileHeader->simplifiedName);
+		}
+		return true;
+	}
+	return false;
 }
 
 const char* CBIGFile::GetFileNameById(uint32 id) const
@@ -497,6 +523,11 @@ const char* CBIGFile::GetFileNameById(uint32 id) const
 uint32 CBIGFile::GetCurrentFileId() const
 {
 	return m_fileId;
+}
+
+bool CBIGFile::SetCurrentFileName(const char* szName)
+{
+	return SetFileNameById(m_fileId, szName);
 }
 
 const char* CBIGFile::GetCurrentFileName() const
