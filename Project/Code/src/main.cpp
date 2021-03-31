@@ -18,6 +18,12 @@
 #define COMMANDLINE_ARG_APPEND           "-append"
 
 
+namespace
+{
+	int Error = 1;
+	int NoError = 0;
+}
+
 struct SOptions
 {
 	SOptions()
@@ -49,19 +55,23 @@ void InitRandom()
 
 void Welcome()
 {
-	std::cout << "Generals Big Creator 1.1 by xezon" << std::endl;
+	std::cout << "Generals Big Creator 1.2 by xezon" << std::endl;
 }
 
-void ExtractBigFile(const SOptions& options)
+bool ExtractBigFile(const SOptions& options)
 {
 	CBIGFile::TFlags bigFlags = CBIGFile::eFlags_Read;
 	bigFlags |= options.simplifyNames ? CBIGFile::eFlags_UseSimplifiedName : 0;
 	bigFlags |= options.ignoreDuplicates ? CBIGFile::eFlags_IgnoreDuplicates : 0;
 
-	// TODO: Implement
+	// TODO: Implement.
+
+	std::cout << "Error: not implemented" << std::endl;
+
+	return false;
 }
 
-void CreateBigFile(const SOptions& options)
+bool CreateBigFile(const SOptions& options)
 {
 	CBIGFile::TFlags bigFlags = CBIGFile::eFlags_Write;
 	bigFlags |= options.append ? CBIGFile::eFlags_Read : 0;
@@ -69,29 +79,56 @@ void CreateBigFile(const SOptions& options)
 	bigFlags |= options.ignoreDuplicates ? CBIGFile::eFlags_IgnoreDuplicates : 0;
 
 	CBIGFile bigFile;
-	if (bigFile.OpenFile(options.wcsDst, bigFlags))
+	if (!bigFile.OpenFile(options.wcsDst, bigFlags))
 	{
-		bigFile.SetCurrentFileId(~0u);
-		CFileFinder fileFinder;
-		fileFinder.Initialize(options.wcsSrc, options.wcsWildcard, options.maxDepth, CBIGFile::eFlags_None);
-
-		const char* szFileName = fileFinder.GetFirstFileName();
-		
-		do
-		{
-			if (!(szFileName && *szFileName))
-				break;
-
-			CBIGFile::TData data;
-			if (fileFinder.ReadDataFromCurrentFile(data) == fileaccess::eError_Success)
-			{
-				std::string fullFileName;
-				fullFileName.append(options.szPrefix).append(szFileName);
-				bigFile.AddNewFile(fullFileName.c_str(), data);
-			}
-		}
-		while (szFileName = fileFinder.GetNextFileName());
+		std::cout << "Error: '" << options.wcsDst << "' cannot be opened" << std::endl;
+		return false;
 	}
+
+	bigFile.SetCurrentFileId(~0u);
+	CFileFinder fileFinder;
+	if (!fileFinder.Initialize(options.wcsSrc, options.wcsWildcard, options.maxDepth, CBIGFile::eFlags_None))
+	{
+		std::cout << "Error: '" << options.wcsSrc << "' '" << options.wcsWildcard << "' cannot be used" << std::endl;
+		return false;
+	}
+
+	const char* szFileName = fileFinder.GetFirstFileName();
+	
+	do
+	{
+		if (!(szFileName && *szFileName))
+			break;
+
+		CBIGFile::TData data;
+		std::string fullFileName;
+		fullFileName.append(options.szPrefix).append(szFileName);
+
+		if (fileFinder.ReadDataFromCurrentFile(data) != fileaccess::eError_Success)
+		{
+			std::cout << "Error: '" << fullFileName << "' cannot be read" << std::endl;
+			return false;
+		}
+
+		if (!bigFile.AddNewFile(fullFileName.c_str(), data))
+		{
+			std::cout << "Error: '" << fullFileName << "' cannot be added to BIG file" << std::endl;
+			return false;
+		}
+
+		std::cout << "OK '" << fullFileName << "'" << std::endl;
+
+		// TODO: Check pending file size and write out if necessary otherwise process memory will grow large.
+	}
+	while (szFileName = fileFinder.GetNextFileName());
+
+	if (!bigFile.WriteOutPendingFileChanges())
+	{
+		std::cout << "Error: '" << options.wcsDst << "' write out failed" << std::endl;
+		return false;
+	}
+
+	return true;
 }
 
 int main(int argc, wchar_t* argv[])
@@ -136,13 +173,13 @@ int main(int argc, wchar_t* argv[])
 	if (!options.wcsSrc)
 	{
 		std::cout << "Error: missing argument for " COMMANDLINE_ARG_SOURCE << std::endl;
-		return 1;
+		return Error;
 	}
 
 	if (!options.wcsDst)
 	{
 		std::cout << "Error: missing argument for " COMMANDLINE_ARG_DEST << std::endl;
-		return 1;
+		return Error;
 	}
 
 	const bool srcBigFile = CBIGFile::HasBigFileExtension(options.wcsSrc);
@@ -153,8 +190,25 @@ int main(int argc, wchar_t* argv[])
 	if (!(createBigFile || extractBigFile))
 	{
 		std::cout << "Error: no creation or extraction job" << std::endl;
-		return 0;
+		return Error;
 	}
+
+	if (createBigFile)
+	{
+		if (!fileaccess::FileExists(options.wcsSrc))
+		{
+			std::wcout << "Error: '" << options.wcsSrc << "' is no valid path" << std::endl;
+			return Error;
+		}
+
+		if (options.append && !fileaccess::FileExists(options.wcsDst))
+		{
+			std::wcout << "Error: '" << options.wcsDst << "' is no valid file" << std::endl;
+			return Error;
+		}
+	}
+
+	// TODO: Add error codes and messages.
 
 	std::string prefixNames;
 
@@ -174,17 +228,26 @@ int main(int argc, wchar_t* argv[])
 		options.wcsWildcard = wcsWildcard;
 	}
 
-	// TODO: Add error codes and messages.
+	bool success = false;
 
 	if (extractBigFile)
 	{
-		ExtractBigFile(options);
+		success = ExtractBigFile(options);
 	}
 
 	if (createBigFile)
 	{
-		CreateBigFile(options);
+		success = CreateBigFile(options);
 	}
 
-	return 0;
+	if (success)
+	{
+		std::cout << "Operation completed" << std::endl;
+		return NoError;
+	}
+	else
+	{
+		std::cout << "Error: operation failed" << std::endl;
+		return Error;
+	}
 }

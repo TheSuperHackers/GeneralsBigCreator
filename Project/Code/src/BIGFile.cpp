@@ -67,7 +67,10 @@ CBIGFile::CBIGFile()
 
 CBIGFile::~CBIGFile()
 {
-	CloseFile();
+	if (m_flags & eFlags_WriteOutOnDestruct)
+	{
+		CloseFile();
+	}
 }
 
 bool CBIGFile::OpenFile(const wchar_t* wcsBigFileName, TFlags flags)

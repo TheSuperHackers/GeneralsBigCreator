@@ -40,11 +40,12 @@ public:
 
 	enum EFlags : uint32
 	{
-		eFlags_None              = 0,
-		eFlags_Read              = BIT(1),
-		eFlags_Write             = BIT(2),
-		eFlags_UseSimplifiedName = BIT(3),
-		eFlags_IgnoreDuplicates  = BIT(4),
+		eFlags_None               = 0,
+		eFlags_Read               = BIT(1),
+		eFlags_Write              = BIT(2),
+		eFlags_UseSimplifiedName  = BIT(3),
+		eFlags_IgnoreDuplicates   = BIT(4),
+		eFlags_WriteOutOnDestruct = BIT(5),
 	};
 
 private:

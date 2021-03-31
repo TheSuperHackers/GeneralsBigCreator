@@ -1,6 +1,7 @@
 #include "FileAccess.h"
 #include "utils.h"
 #include <fstream>
+#include <errno.h>
 
 
 namespace fileaccess {
@@ -149,6 +150,34 @@ EError WriteDataToStream(std::ostream& stream, const TStringData& data, size_t o
 EError WriteDataToStream(std::ostream& stream, const TVectorData& data, size_t offset)
 {
 	return WriteDataToStreamInternal(stream, data, offset);
+}
+
+bool FileExists(const wchar_t* fileName)
+{
+	return GetFileAccess(fileName, eAccessMode_Existence) == eAccess_Success;
+}
+
+bool FileWritable(const wchar_t* fileName)
+{
+	return GetFileAccess(fileName, eAccessMode_Write) == eAccess_Success;
+}
+
+bool FileReadable(const wchar_t* fileName)
+{
+	return GetFileAccess(fileName, eAccessMode_Read) == eAccess_Success;
+}
+
+EAccess GetFileAccess(const wchar_t* fileName, int accessMode)
+{
+	const errno_t err = ::_waccess_s(fileName, accessMode);
+	switch (err)
+	{
+	case 0:      return eAccess_Success;
+	case EACCES: return eAccess_Denied;
+	case ENOENT: return eAccess_NotFound;
+	case EINVAL: return eAccess_InvalidParameter;
+	default:     return eAccess_UnknownError;
+	}
 }
 
 } // namespace fileaccess
