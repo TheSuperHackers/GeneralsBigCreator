@@ -19,5 +19,7 @@ v1.0:
 - Initial release
 
 v1.1:
-- Added -sourcewildcard command line option
-- Added -prefixnames command line option
+- Added -sourcewildcard, -prefixnames, -append command line options
+
+v1.2
+- Added messages for operation success and failure

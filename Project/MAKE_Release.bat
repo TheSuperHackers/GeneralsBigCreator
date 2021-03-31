@@ -1,4 +1,4 @@
-set ArchiveName=GeneralsBigCreator_v1.1
+set ArchiveName=GeneralsBigCreator_v1.2
 
 set ReleaseDir=Release
 set ReleaseUnpackedDir=ReleaseUnpacked
