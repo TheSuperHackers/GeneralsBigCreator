@@ -43,17 +43,17 @@ const char CBIGFile::s_simplified_charset[256] =
 };
 
 
-void CBIGFile::SHeader::Swap(SHeader& other)
-{
-	bigHeader = other.bigHeader;
-	lastHeader = other.lastHeader;
-	fileHeaders.swap(other.fileHeaders);
-}
-
-void CBIGFile::SHeader::Clear()
+void CBIGFile::SBigFullHeader::Clear()
 {
 	bigHeader = SBigHeader();
-	lastHeader = SLastHeader();
+	lastHeader = SBigLastHeader();
+	utils::ClearMemory(fileHeaders);
+}
+
+void CBIGFile::SBigFullHeaderEx::Clear()
+{
+	bigHeader = SBigHeader();
+	lastHeader = SBigLastHeader();
 	utils::ClearMemory(fileHeaders);
 }
 
@@ -168,7 +168,7 @@ bool CBIGFile::BuildFromFileStream()
 					{
 						m_fileDataVector.resize(m_workingHeader.fileHeaders.size());
 						BuildFileHeaderIndices(m_fileHeaderIndices, m_workingHeader.fileHeaders);
-						m_physicalHeader = m_workingHeader;
+						m_physicalHeader.Copy(m_workingHeader);
 						success = true;
 					}
 				}
@@ -297,7 +297,7 @@ bool CBIGFile::WriteBigHeaderToData(TData& data, const SBigHeader& bigHeader)
 	return false;
 }
 
-bool CBIGFile::ReadFileHeadersFromData(TFileHeaders& fileHeaders, const SBigHeader& bigHeader, const TData& data, uint32 offset, TFlags flags)
+bool CBIGFile::ReadFileHeadersFromData(TBigFileHeadersEx& fileHeaders, const SBigHeader& bigHeader, const TData& data, uint32 offset, TFlags flags)
 {
 	const uint32 fileHeaderSize = bigHeader.FileHeaderSize();
 	const uint32 fileCount = bigHeader.fileCount;
@@ -313,8 +313,8 @@ bool CBIGFile::ReadFileHeadersFromData(TFileHeaders& fileHeaders, const SBigHead
 
 		for (uint32 fileIndex = 0; fileIndex < fileCount; ++fileIndex)
 		{
-			fileHeaders.push_back(SFileHeader());
-			SFileHeader& newFileHeader = fileHeaders.back();
+			fileHeaders.push_back(SBigFileHeaderEx());
+			SBigFileHeaderEx& newFileHeader = fileHeaders.back();
 
 			newFileHeader.offset = utils::GetInvert(*reinterpret_cast<const uint32*>(&data[dataIndex]));
 			dataIndex += sizeof(uint32);
@@ -373,7 +373,7 @@ bool CBIGFile::ReadFileHeadersFromData(TFileHeaders& fileHeaders, const SBigHead
 	return false;
 }
 
-bool CBIGFile::WriteFileHeadersToData(TData& data, const TFileHeaders& fileHeaders, uint32 offset)
+bool CBIGFile::WriteFileHeadersToData(TData& data, const TBigFileHeadersEx& fileHeaders, uint32 offset)
 {
 	const uint32 fileHeaderSize = GetSizeOnDisk(fileHeaders);
 	const uint32 fileCount = fileHeaders.size();
@@ -386,7 +386,7 @@ bool CBIGFile::WriteFileHeadersToData(TData& data, const TFileHeaders& fileHeade
 		
 		for (uint32 fileIndex = 0; fileIndex < fileCount; ++fileIndex)
 		{
-			const SFileHeader& fileHeader = fileHeaders[fileIndex];
+			const SBigFileHeaderEx& fileHeader = fileHeaders[fileIndex];
 
 			*reinterpret_cast<uint32*>(&data[dataIndex]) = utils::GetInvert(fileHeader.offset);
 			dataIndex += sizeof(uint32);
@@ -404,7 +404,7 @@ bool CBIGFile::WriteFileHeadersToData(TData& data, const TFileHeaders& fileHeade
 	return false;
 }
 
-bool CBIGFile::ReadLastHeaderFromData(SLastHeader& lastHeader, const TData& data, uint32 offset)
+bool CBIGFile::ReadLastHeaderFromData(SBigLastHeader& lastHeader, const TData& data, uint32 offset)
 {
 	assert(data.size() >= lastHeader.SizeOnDisk() + offset);
 
@@ -417,7 +417,7 @@ bool CBIGFile::ReadLastHeaderFromData(SLastHeader& lastHeader, const TData& data
 	return false;
 }
 
-bool CBIGFile::WriteLastHeaderToData(TData& data, const SLastHeader& lastHeader, uint32 offset)
+bool CBIGFile::WriteLastHeaderToData(TData& data, const SBigLastHeader& lastHeader, uint32 offset)
 {
 	assert(data.size() >= lastHeader.SizeOnDisk() + offset);
 
@@ -430,7 +430,7 @@ bool CBIGFile::WriteLastHeaderToData(TData& data, const SLastHeader& lastHeader,
 	return false;
 }
 
-void CBIGFile::BuildFileHeaderIndices(TIntegers& fileHeaderIndices, const TFileHeaders& fileHeaders)
+void CBIGFile::BuildFileHeaderIndices(TIntegers& fileHeaderIndices, const TBigFileHeadersEx& fileHeaders)
 {
 	const uint32 fileCount = fileHeaders.size();
 	fileHeaderIndices.clear();
@@ -447,20 +447,20 @@ void CBIGFile::BuildFileHeaderIndices(TIntegers& fileHeaderIndices, const TFileH
 	}
 }
 
-void CBIGFile::BuildBigHeaderAndFileHeaders(SBigHeader& bigHeader, TFileHeaders& fileHeaders, const TDataPtrVector& fileDataVector)
+void CBIGFile::BuildBigHeaderAndFileHeaders(SBigHeader& bigHeader, TBigFileHeadersEx& fileHeaders, const TDataPtrVector& fileDataVector)
 {
 	assert(fileHeaders.size() == fileDataVector.size());
 
 	bigHeader.bigFileSize = 0;
 	bigHeader.bigFileSize += bigHeader.SizeOnDisk();
 	bigHeader.bigFileSize += GetSizeOnDisk(fileHeaders);
-	bigHeader.bigFileSize += SLastHeader::SizeOnDisk();
+	bigHeader.bigFileSize += SBigLastHeader::SizeOnDisk();
 	bigHeader.headerSize = bigHeader.bigFileSize;
 	bigHeader.fileCount = fileHeaders.size();
 
 	for (uint32 fileIndex = 0; fileIndex < bigHeader.fileCount; ++fileIndex)
 	{
-		SFileHeader& fileHeader = fileHeaders[fileIndex];
+		SBigFileHeaderEx& fileHeader = fileHeaders[fileIndex];
 		const TDataPtr& fileDataPtr = fileDataVector[fileIndex];
 
 		fileHeader.offset = bigHeader.bigFileSize;
@@ -470,7 +470,7 @@ void CBIGFile::BuildBigHeaderAndFileHeaders(SBigHeader& bigHeader, TFileHeaders&
 	}
 }
 
-uint32 CBIGFile::GetSizeOnDisk(const TFileHeaders& fileHeaders)
+uint32 CBIGFile::GetSizeOnDisk(const TBigFileHeadersEx& fileHeaders)
 {
 	uint32 sizeOnDisk = 0;
 	const uint32 fileCount = fileHeaders.size();
@@ -481,7 +481,7 @@ uint32 CBIGFile::GetSizeOnDisk(const TFileHeaders& fileHeaders)
 	return sizeOnDisk;
 }
 
-uint32 CBIGFile::GetMaxFileSize(const TFileHeaders& fileHeaders)
+uint32 CBIGFile::GetMaxFileSize(const TBigFileHeadersEx& fileHeaders)
 {
 	uint32 maxFileSize = 0;
 	const uint32 fileCount = fileHeaders.size();
@@ -492,7 +492,7 @@ uint32 CBIGFile::GetMaxFileSize(const TFileHeaders& fileHeaders)
 	return maxFileSize;
 }
 
-CBIGFile::SFileHeader* CBIGFile::GetFileHeader(uint32 id)
+CBIGFile::SBigFileHeaderEx* CBIGFile::GetFileHeader(uint32 id)
 {
 	if (id < m_fileHeaderIndices.size())
 	{
@@ -502,7 +502,7 @@ CBIGFile::SFileHeader* CBIGFile::GetFileHeader(uint32 id)
 	return NULL;
 }
 
-const CBIGFile::SFileHeader* CBIGFile::GetFileHeader(uint32 id) const
+const CBIGFile::SBigFileHeaderEx* CBIGFile::GetFileHeader(uint32 id) const
 {
 	if (id < m_fileHeaderIndices.size())
 	{
@@ -514,7 +514,7 @@ const CBIGFile::SFileHeader* CBIGFile::GetFileHeader(uint32 id) const
 
 bool CBIGFile::SetFileNameById(uint32 id, const char* szName)
 {
-	if (SFileHeader* pFileHeader = GetFileHeader(id))
+	if (SBigFileHeaderEx* pFileHeader = GetFileHeader(id))
 	{
 		pFileHeader->name = szName;
 		pFileHeader->simplifiedName = szName;
@@ -530,7 +530,7 @@ bool CBIGFile::SetFileNameById(uint32 id, const char* szName)
 
 const char* CBIGFile::GetFileNameById(uint32 id) const
 {
-	if (const SFileHeader* pFileHeader = GetFileHeader(id))
+	if (const SBigFileHeaderEx* pFileHeader = GetFileHeader(id))
 	{
 		return pFileHeader->simplifiedName.c_str();
 	}
@@ -579,7 +579,7 @@ bool CBIGFile::AddNewFile(uint32 id, const char* szName, const TData& data, bool
 {
 	bool success = false;
 
-	SFileHeader newFileHeader;
+	SBigFileHeaderEx newFileHeader;
 	newFileHeader.name = szName;
 	newFileHeader.simplifiedName = szName;
 
@@ -646,7 +646,7 @@ bool CBIGFile::ReadFileDataById(uint32 id, TData& data)
 		else
 		{
 			// Get data that is in the .big file on disk
-			const SFileHeader& fileHeader = m_workingHeader.fileHeaders[index];
+			const SBigFileHeaderEx& fileHeader = m_workingHeader.fileHeaders[index];
 			data.resize(fileHeader.size);
 			success = ReadDataFromStream(data, m_fstream, fileHeader.offset);
 		}
@@ -755,7 +755,7 @@ bool CBIGFile::WriteOutPendingFileChanges()
 							{
 								// Transfer file data from original .big file to new .big file
 								assert(physicalFileIndex < physicalFileCount);
-								const SFileHeader& fileHeader = m_physicalHeader.fileHeaders[physicalFileIndex];
+								const SBigFileHeader& fileHeader = m_physicalHeader.fileHeaders[physicalFileIndex];
 								fileData.resize(fileHeader.size);
 								ok = ok && ReadDataFromStream(fileData, m_fstream, fileHeader.offset);
 								ok = ok && WriteDataToStream(fileData, ofstream);
@@ -767,7 +767,7 @@ bool CBIGFile::WriteOutPendingFileChanges()
 								ok = ok && WriteDataToStream(newFileDataPtr->data, ofstream);
 							}
 
-							const SFileHeader& fileHeader = m_workingHeader.fileHeaders[workingFileIndex];
+							const SBigFileHeaderEx& fileHeader = m_workingHeader.fileHeaders[workingFileIndex];
 							if (fileHeader.physical)
 							{
 								++physicalFileIndex;
@@ -788,7 +788,7 @@ bool CBIGFile::WriteOutPendingFileChanges()
 									{
 										m_workingHeader.fileHeaders[fileIndex].physical = true;
 									}
-									m_physicalHeader = m_workingHeader;
+									m_physicalHeader.Copy(m_workingHeader);
 									ClearPendingFileChanges();
 									BuildFileHeaderIndices(m_fileHeaderIndices, m_workingHeader.fileHeaders);
 

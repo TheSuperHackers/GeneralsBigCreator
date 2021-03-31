@@ -50,20 +50,12 @@ public:
 private:
 	struct SBigHeader
 	{
-		SBigHeader()
+		inline SBigHeader()
 			: bigf(0)
 			, bigFileSize(0)
 			, fileCount(0)
 			, headerSize(0)
 		{}
-
-		void Swap(SBigHeader& other)
-		{
-			std::swap(bigf, other.bigf);
-			std::swap(bigFileSize, other.bigFileSize);
-			std::swap(fileCount, other.fileCount);
-			std::swap(headerSize, other.headerSize);
-		}
 
 		static uint32 GetSignature()
 		{
@@ -82,7 +74,7 @@ private:
 
 		inline uint32 FileHeaderSize() const
 		{
-			return headerSize - this->SizeOnDisk() - SLastHeader::SizeOnDisk();
+			return headerSize - this->SizeOnDisk() - SBigLastHeader::SizeOnDisk();
 		}
 
 		static uint32 SizeOnDisk()
@@ -92,30 +84,17 @@ private:
 
 		uint32 bigf;        // File identifier 'BIGF'
 		uint32 bigFileSize; // Entire file size in bytes
-		uint32 fileCount;   // count of SFileHeader
-		uint32 headerSize;  // SBigHeader + SFileHeader * fileCount + SLastHeader
+		uint32 fileCount;   // count of SBigFileHeader
+		uint32 headerSize;  // SBigHeader + SBigFileHeader * fileCount + SBigLastHeader
 	};
 
-	struct SFileHeader
+	struct SBigFileHeader
 	{
-		SFileHeader()
+		inline SBigFileHeader()
 			: offset(0)
 			, size(0)
 			, name()
-			, simplifiedName()
-			, ignore(false)
-			, physical(false)
 		{}
-
-		void Swap(SFileHeader& other)
-		{
-			std::swap(offset, other.offset);
-			std::swap(size, other.size);
-			std::swap(name, other.name);
-			std::swap(simplifiedName, other.simplifiedName);
-			std::swap(ignore, other.ignore);
-			std::swap(physical, other.physical);
-		}
 
 		inline bool IsGood() const
 		{
@@ -130,38 +109,68 @@ private:
 		uint32 offset;              // Offset in bytes where file content starts in .big file
 		uint32 size;                // Size in bytes of the file this header refers to
 		std::string name;           // File name that this header refers to and is reflected in the actual .big file
+	};
+
+	struct SBigFileHeaderEx : public SBigFileHeader
+	{
+		inline SBigFileHeaderEx()
+			: SBigFileHeader()
+			, simplifiedName()
+			, ignore(false)
+			, physical(false)
+		{}
+
 		std::string simplifiedName; // File name that this header refers to and is reflected to the user of this class
 		bool ignore;                // Whether or not this header is ignored for access
 		bool physical;              // Whether ot not this file already exists on disk
 	};
 
-	struct SLastHeader
+	struct SBigLastHeader
 	{
-		inline SLastHeader()
+		inline SBigLastHeader()
 			: unknown1(0)
 			, unknown2(0)
 		{}
 
 		static uint32 SizeOnDisk()
 		{
-			return sizeof(SLastHeader);
+			return sizeof(SBigLastHeader);
 		}
 
 		uint32 unknown1;
 		uint32 unknown2;
 	};
 
-	typedef std::vector<SFileHeader> TFileHeaders;
+	typedef std::vector<SBigFileHeader> TBigFileHeaders;
+	typedef std::vector<SBigFileHeaderEx> TBigFileHeadersEx;
 	typedef std::vector<uint32> TIntegers;
 
-	struct SHeader
+	struct SBigFullHeader
 	{
-		void Swap(SHeader& other);
+		template <typename TBigFullHeader>
+		inline void Copy(const TBigFullHeader& other)
+		{
+			const size_t count = other.fileHeaders.size();
+			bigHeader = other.bigHeader;
+			lastHeader = other.lastHeader;
+			fileHeaders.resize(count);
+			for (size_t i = 0; i < count; ++i)
+				fileHeaders[i] = other.fileHeaders[i];
+		}
 		void Clear();
 
 		SBigHeader bigHeader;
-		TFileHeaders fileHeaders;
-		SLastHeader lastHeader;
+		TBigFileHeaders fileHeaders;
+		SBigLastHeader lastHeader;
+	};
+
+	struct SBigFullHeaderEx
+	{
+		void Clear();
+
+		SBigHeader bigHeader;
+		TBigFileHeadersEx fileHeaders;
+		SBigLastHeader lastHeader;
 	};
 
 public:
@@ -209,8 +218,8 @@ private:
 	bool BuildFromFileStream();
 	bool BuildDefault();
 
-	SFileHeader* GetFileHeader(uint32 id);
-	const SFileHeader* GetFileHeader(uint32 id) const;
+	SBigFileHeaderEx* GetFileHeader(uint32 id);
+	const SBigFileHeaderEx* GetFileHeader(uint32 id) const;
 
 	static bool ReadDataFromStream(TData& data, std::istream& istream, uint32 offset = 0u);
 	static bool WriteDataToStream(const TData& data, std::ostream& ostream, uint32 offset = 0xFFFFFFFFu);
@@ -218,23 +227,23 @@ private:
 	static bool ReadBigHeaderFromData(SBigHeader& bigHeader, const TData& data);
 	static bool WriteBigHeaderToData(TData& data, const SBigHeader& bigHeader);
 
-	static bool ReadFileHeadersFromData(TFileHeaders& fileHeaders, const SBigHeader& bigHeader, const TData& data, uint32 offset = 0u, TFlags flags = eFlags_None);
-	static bool WriteFileHeadersToData(TData& data, const TFileHeaders& fileHeaders, uint32 offset = 0u);
+	static bool ReadFileHeadersFromData(TBigFileHeadersEx& fileHeaders, const SBigHeader& bigHeader, const TData& data, uint32 offset = 0u, TFlags flags = eFlags_None);
+	static bool WriteFileHeadersToData(TData& data, const TBigFileHeadersEx& fileHeaders, uint32 offset = 0u);
 
-	static bool ReadLastHeaderFromData(SLastHeader& lastHeader, const TData& data, uint32 offset = 0u);
-	static bool WriteLastHeaderToData(TData& data, const SLastHeader& lastHeader, uint32 offset = 0u);
+	static bool ReadLastHeaderFromData(SBigLastHeader& lastHeader, const TData& data, uint32 offset = 0u);
+	static bool WriteLastHeaderToData(TData& data, const SBigLastHeader& lastHeader, uint32 offset = 0u);
 
-	static void BuildFileHeaderIndices(TIntegers& fileHeaderIndices, const TFileHeaders& fileHeaders);
-	static void BuildBigHeaderAndFileHeaders(SBigHeader& bigHeader, TFileHeaders& fileHeaders, const TDataPtrVector& fileDataVector);
+	static void BuildFileHeaderIndices(TIntegers& fileHeaderIndices, const TBigFileHeadersEx& fileHeaders);
+	static void BuildBigHeaderAndFileHeaders(SBigHeader& bigHeader, TBigFileHeadersEx& fileHeaders, const TDataPtrVector& fileDataVector);
 
-	static uint32 GetSizeOnDisk(const TFileHeaders& fileHeaders);
-	static uint32 GetMaxFileSize(const TFileHeaders& fileHeaders);
+	static uint32 GetSizeOnDisk(const TBigFileHeadersEx& fileHeaders);
+	static uint32 GetMaxFileSize(const TBigFileHeadersEx& fileHeaders);
 
 private:
 	static const char s_simplified_charset[256];
 
-	SHeader m_workingHeader;
-	SHeader m_physicalHeader;
+	SBigFullHeaderEx m_workingHeader;
+	SBigFullHeader m_physicalHeader;
 
 	// File data that exists in memory only and can be written to .big file
 	TDataPtrVector m_fileDataVector;
