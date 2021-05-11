@@ -640,7 +640,7 @@ bool CBIGFile::ReadFileDataById(uint32 id, TData& data)
 		const uint32 index = m_fileHeaderIndices[id];
 		const TDataPtr& internalDataPtr = m_fileDataVector[index];
 
-		if (!internalDataPtr->data.empty())
+		if (internalDataPtr.get() && !internalDataPtr->data.empty())
 		{
 			// Get data that is not yet written out to the .big file
 			data = internalDataPtr->data;
