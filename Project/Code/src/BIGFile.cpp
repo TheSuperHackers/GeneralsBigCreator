@@ -635,23 +635,32 @@ bool CBIGFile::AddNewFile(uint32 id, const char* szName, const TData& data, bool
 bool CBIGFile::ReadFileDataById(uint32 id, TData& data)
 {
 	bool success = false;
+	uint32 nonPhysicalFileCount = 0;
+
 	if (id < m_fileHeaderIndices.size())
 	{
-		const uint32 index = m_fileHeaderIndices[id];
-		const TDataPtr& internalDataPtr = m_fileDataVector[index];
+		const uint32 workingFileIndex = m_fileHeaderIndices[id];
+		const TDataPtr& internalDataPtr = m_fileDataVector[workingFileIndex];
 
 		if (internalDataPtr.get() && !internalDataPtr->data.empty())
 		{
-			// Get data that is not yet written out to the .big file
+			// Get data that is not yet written out to the .big file.
 			data = internalDataPtr->data;
 			success = true;
 		}
 		else
 		{
-			// Get data that is in the .big file on disk
-			const SBigFileHeaderEx& fileHeader = m_workingHeader.fileHeaders[index];
+			// Get data that is in the .big file on disk.
+			const uint32 physicalFileIndex = workingFileIndex - nonPhysicalFileCount;
+			const SBigFileHeader& fileHeader = m_physicalHeader.fileHeaders[physicalFileIndex];
 			data.resize(fileHeader.size);
 			success = ReadDataFromStream(data, m_fstream, fileHeader.offset);
+		}
+
+		const SBigFileHeaderEx& fileHeader = m_workingHeader.fileHeaders[workingFileIndex];
+		if (!fileHeader.physical)
+		{
+			nonPhysicalFileCount++;
 		}
 	}
 	return success;
@@ -662,8 +671,11 @@ bool CBIGFile::WriteFileDataById(uint32 id, const TData& data, bool immediateWri
 	bool success = false;
 	if (id < m_fileHeaderIndices.size())
 	{
-		const uint32 index = m_fileHeaderIndices[id];
-		m_fileDataVector[index] = new SDataRef(data);
+		const uint32 workingFileIndex = m_fileHeaderIndices[id];
+		m_fileDataVector[workingFileIndex] = new SDataRef(data);
+
+		// Rebuild headers with new data added.
+		BuildBigHeaderAndFileHeaders(m_workingHeader.bigHeader, m_workingHeader.fileHeaders, m_fileDataVector);
 
 		if (immediateWriteOut)
 		{
@@ -716,99 +728,90 @@ bool CBIGFile::WriteOutPendingFileChanges()
 		bool newFileCreated = false;
 		const std::wstring newFilename = utils::AppendRandomNumbers(m_bigFileName, 8);
 
-		try
+		std::ios::openmode mode = std::ios::out | std::ios::binary;
+		std::ofstream ofstream;
+		ofstream.open(newFilename.c_str(), mode);
+		newFileCreated = ofstream.is_open();
+
+		if (newFileCreated)
 		{
-			if (m_fstream.is_open() && m_fstream.good())
+			const uint32 bigHeaderSize = m_workingHeader.bigHeader.SizeOnDisk();
+			const uint32 fileHeadersSize = GetSizeOnDisk(m_workingHeader.fileHeaders);
+			const uint32 lastHeaderSize = m_workingHeader.lastHeader.SizeOnDisk();
+
+			TData newHeaderData;
+			newHeaderData.resize(bigHeaderSize + fileHeadersSize + lastHeaderSize);
+
+			bool ok = true;
+			ok = ok && WriteBigHeaderToData(newHeaderData, m_workingHeader.bigHeader);
+			ok = ok && WriteFileHeadersToData(newHeaderData, m_workingHeader.fileHeaders, bigHeaderSize);
+			ok = ok && WriteLastHeaderToData(newHeaderData, m_workingHeader.lastHeader, bigHeaderSize + fileHeadersSize);
+
+			if (ok)
 			{
-				std::ios::openmode mode = std::ios::out | std::ios::binary;
-				std::ofstream ofstream;
-				ofstream.open(newFilename.c_str(), mode);
-				newFileCreated = ofstream.is_open();
+				ok = ok && WriteDataToStream(newHeaderData, ofstream);
+				const uint32 workingFileCount = static_cast<uint32>(m_workingHeader.fileHeaders.size());
+				const uint32 maxFileSize = GetMaxFileSize(m_workingHeader.fileHeaders);
+				TData fileData;
+				fileData.reserve(maxFileSize);
+				uint32 workingFileIndex = 0;
+				uint32 physicalFileIndex = 0;
 
-				if (newFileCreated)
+				for (; workingFileIndex < workingFileCount; ++workingFileIndex)
 				{
-					const uint32 bigHeaderSize = m_workingHeader.bigHeader.SizeOnDisk();
-					const uint32 fileHeadersSize = GetSizeOnDisk(m_workingHeader.fileHeaders);
-					const uint32 lastHeaderSize = m_workingHeader.lastHeader.SizeOnDisk();
+					const TDataPtr& newFileDataPtr = m_fileDataVector[workingFileIndex];
 
-					TData newHeaderData;
-					newHeaderData.resize(bigHeaderSize + fileHeadersSize + lastHeaderSize);
-
-					bool ok = true;
-					ok = ok && WriteBigHeaderToData(newHeaderData, m_workingHeader.bigHeader);
-					ok = ok && WriteFileHeadersToData(newHeaderData, m_workingHeader.fileHeaders, bigHeaderSize);
-					ok = ok && WriteLastHeaderToData(newHeaderData, m_workingHeader.lastHeader, bigHeaderSize + fileHeadersSize);
-
-					if (ok)
+					if (!newFileDataPtr.get())
 					{
-						ok = ok && WriteDataToStream(newHeaderData, ofstream);
-						const uint32 workingFileCount = static_cast<uint32>(m_workingHeader.fileHeaders.size());
-						const uint32 physicalFileCount = static_cast<uint32>(m_physicalHeader.fileHeaders.size());
-						const uint32 maxFileSize = GetMaxFileSize(m_workingHeader.fileHeaders);
-						TData fileData;
-						fileData.reserve(maxFileSize);
-						uint32 workingFileIndex = 0;
-						uint32 physicalFileIndex = 0;
-
-						for (; workingFileIndex < workingFileCount; ++workingFileIndex)
+						if (m_fstream.is_open() && m_fstream.good())
 						{
-							const TDataPtr& newFileDataPtr = m_fileDataVector[workingFileIndex];
-
-							if (!newFileDataPtr.get())
-							{
-								// Transfer file data from original .big file to new .big file
-								assert(physicalFileIndex < physicalFileCount);
-								const SBigFileHeader& fileHeader = m_physicalHeader.fileHeaders[physicalFileIndex];
-								fileData.resize(fileHeader.size);
-								ok = ok && ReadDataFromStream(fileData, m_fstream, fileHeader.offset);
-								ok = ok && WriteDataToStream(fileData, ofstream);
-								
-							}
-							else
-							{
-								// Save new file data to new .big file
-								ok = ok && WriteDataToStream(newFileDataPtr->data, ofstream);
-							}
-
-							const SBigFileHeaderEx& fileHeader = m_workingHeader.fileHeaders[workingFileIndex];
-							if (fileHeader.physical)
-							{
-								++physicalFileIndex;
-							}
-						}
-
-						if (ok)
-						{
-							ofstream.close();
-							CloseFileStream();
-
-							// Replace the new written file with the original file
-							if (::DeleteFileW(m_bigFileName.c_str()) != FALSE)
-							{
-								if (::MoveFileW(newFilename.c_str(), m_bigFileName.c_str()) != FALSE)
-								{
-									for (uint32 fileIndex = 0; fileIndex < workingFileCount; ++fileIndex)
-									{
-										m_workingHeader.fileHeaders[fileIndex].physical = true;
-									}
-									m_physicalHeader.Copy(m_workingHeader);
-									ClearPendingFileChanges();
-									BuildFileHeaderIndices(m_fileHeaderIndices, m_workingHeader.fileHeaders);
-
-									newFileCreated = false;
-									m_hasPendingFileChanges = false;
-								}
-							}
-
-							OpenFileStream();
+							// Transfer file data from original .big file to new .big file
+							assert(physicalFileIndex < static_cast<uint32>(m_physicalHeader.fileHeaders.size()));
+							const SBigFileHeader& fileHeader = m_physicalHeader.fileHeaders[physicalFileIndex];
+							fileData.resize(fileHeader.size);
+							ok = ok && ReadDataFromStream(fileData, m_fstream, fileHeader.offset);
+							ok = ok && WriteDataToStream(fileData, ofstream);
 						}
 					}
+					else
+					{
+						// Save new file data to new .big file
+						ok = ok && WriteDataToStream(newFileDataPtr->data, ofstream);
+					}
+
+					const SBigFileHeaderEx& fileHeader = m_workingHeader.fileHeaders[workingFileIndex];
+					if (fileHeader.physical)
+					{
+						++physicalFileIndex;
+					}
+				}
+
+				if (ok)
+				{
+					ofstream.close();
+					CloseFileStream();
+
+					// Replace the new written file with the original file
+					if (::DeleteFileW(m_bigFileName.c_str()) != FALSE)
+					{
+						if (::MoveFileW(newFilename.c_str(), m_bigFileName.c_str()) != FALSE)
+						{
+							for (uint32 fileIndex = 0; fileIndex < workingFileCount; ++fileIndex)
+							{
+								m_workingHeader.fileHeaders[fileIndex].physical = true;
+							}
+							m_physicalHeader.Copy(m_workingHeader);
+							ClearPendingFileChanges();
+							BuildFileHeaderIndices(m_fileHeaderIndices, m_workingHeader.fileHeaders);
+
+							newFileCreated = false;
+							m_hasPendingFileChanges = false;
+						}
+					}
+
+					OpenFileStream();
 				}
 			}
-		}
-		catch (std::exception&)
-		{
-			assert(0);
 		}
 
 		if (newFileCreated)
@@ -860,5 +863,7 @@ void CBIGFile::ApplySimplifiedCharset(std::string& str)
 {
 	const size_t len = str.size();
 	for (size_t i = 0; i < len; ++i)
+	{
 		str[i] = s_simplified_charset[static_cast<size_t>(str[i])];
+	}
 }
