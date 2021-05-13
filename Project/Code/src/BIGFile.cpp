@@ -113,8 +113,8 @@ void CBIGFile::CloseFile()
 
 		m_workingHeader.Clear();
 		m_physicalHeader.Clear();
-		utils::ClearMemory(m_fileDataVector);
-		utils::ClearMemory(m_fileHeaderIndices);
+		utils::ClearMemory(m_workingFileDataVector);
+		utils::ClearMemory(m_workingFileHeaderIndices);
 		utils::ClearMemory(m_bigFileName);
 		CloseFileStream();
 		m_fileId = 0u;
@@ -129,7 +129,7 @@ bool CBIGFile::IsOpen() const
 
 uint32 CBIGFile::GetFileCount() const
 {
-	return m_fileHeaderIndices.size();
+	return m_workingFileHeaderIndices.size();
 }
 
 void CBIGFile::OpenFileStream()
@@ -169,8 +169,8 @@ bool CBIGFile::BuildFromFileStream()
 				{
 					if (ReadLastHeaderFromData(m_workingHeader.lastHeader, headerData, lastHeaderOffset))
 					{
-						m_fileDataVector.resize(m_workingHeader.fileHeaders.size());
-						BuildFileHeaderIndices(m_fileHeaderIndices, m_workingHeader.fileHeaders);
+						m_workingFileDataVector.resize(m_workingHeader.fileHeaders.size());
+						BuildFileHeaderIndices(m_workingFileHeaderIndices, m_workingHeader.fileHeaders);
 						m_physicalHeader.Copy(m_workingHeader);
 						success = true;
 					}
@@ -188,7 +188,7 @@ bool CBIGFile::BuildDefault()
 
 	// Create empty big header.
 	m_workingHeader.bigHeader.bigf = SBigHeader::GetSignature();
-	BuildBigHeaderAndFileHeaders(m_workingHeader.bigHeader, m_workingHeader.fileHeaders, m_fileDataVector);
+	BuildBigHeaderAndFileHeaders(m_workingHeader.bigHeader, m_workingHeader.fileHeaders, m_workingFileDataVector);
 
 	// Set desire to write out changes.
 	m_hasPendingFileChanges = true;
@@ -497,9 +497,9 @@ uint32 CBIGFile::GetMaxFileSize(const TBigFileHeadersEx& fileHeaders)
 
 CBIGFile::SBigFileHeaderEx* CBIGFile::GetFileHeader(uint32 id)
 {
-	if (id < m_fileHeaderIndices.size())
+	if (id < m_workingFileHeaderIndices.size())
 	{
-		const uint32 index = m_fileHeaderIndices[id];
+		const uint32 index = m_workingFileHeaderIndices[id];
 		return &m_workingHeader.fileHeaders[index];
 	}
 	return NULL;
@@ -507,9 +507,9 @@ CBIGFile::SBigFileHeaderEx* CBIGFile::GetFileHeader(uint32 id)
 
 const CBIGFile::SBigFileHeaderEx* CBIGFile::GetFileHeader(uint32 id) const
 {
-	if (id < m_fileHeaderIndices.size())
+	if (id < m_workingFileHeaderIndices.size())
 	{
-		const uint32 index = m_fileHeaderIndices[id];
+		const uint32 index = m_workingFileHeaderIndices[id];
 		return &m_workingHeader.fileHeaders[index];
 	}
 	return NULL;
@@ -597,24 +597,24 @@ bool CBIGFile::AddNewFile(uint32 id, const char* szName, const TData& data, bool
 
 		// Add new file at end.
 		m_fileId = GetFileCount();
-		m_fileHeaderIndices.push_back(fileIndex);
+		m_workingFileHeaderIndices.push_back(fileIndex);
 		m_workingHeader.fileHeaders.push_back(newFileHeader);
-		m_fileDataVector.push_back(new SDataRef(data));
+		m_workingFileDataVector.push_back(new SDataRef(data));
 	}
 	else
 	{
-		const uint32 fileIndex = m_fileHeaderIndices[m_fileId];
+		const uint32 fileIndex = m_workingFileHeaderIndices[m_fileId];
 
 		// Add new file at begin or middle.
 		m_workingHeader.fileHeaders.insert(m_workingHeader.fileHeaders.begin() + fileIndex, newFileHeader);
-		m_fileDataVector.insert(m_fileDataVector.begin() + fileIndex, new SDataRef(data));
+		m_workingFileDataVector.insert(m_workingFileDataVector.begin() + fileIndex, new SDataRef(data));
 
 		// Rebuild file header indices.
-		BuildFileHeaderIndices(m_fileHeaderIndices, m_workingHeader.fileHeaders);
+		BuildFileHeaderIndices(m_workingFileHeaderIndices, m_workingHeader.fileHeaders);
 	}
 
 	// Rebuild headers with new data added.
-	BuildBigHeaderAndFileHeaders(m_workingHeader.bigHeader, m_workingHeader.fileHeaders, m_fileDataVector);
+	BuildBigHeaderAndFileHeaders(m_workingHeader.bigHeader, m_workingHeader.fileHeaders, m_workingFileDataVector);
 
 	// Write out pending changes if necessary.
 	if (immediateWriteOut)
@@ -637,10 +637,10 @@ bool CBIGFile::ReadFileDataById(uint32 id, TData& data)
 	bool success = false;
 	uint32 nonPhysicalFileCount = 0;
 
-	if (id < m_fileHeaderIndices.size())
+	if (id < m_workingFileHeaderIndices.size())
 	{
-		const uint32 workingFileIndex = m_fileHeaderIndices[id];
-		const TDataPtr& internalDataPtr = m_fileDataVector[workingFileIndex];
+		const uint32 workingFileIndex = m_workingFileHeaderIndices[id];
+		const TDataPtr& internalDataPtr = m_workingFileDataVector[workingFileIndex];
 
 		if (internalDataPtr.get() && !internalDataPtr->data.empty())
 		{
@@ -669,13 +669,13 @@ bool CBIGFile::ReadFileDataById(uint32 id, TData& data)
 bool CBIGFile::WriteFileDataById(uint32 id, const TData& data, bool immediateWriteOut)
 {
 	bool success = false;
-	if (id < m_fileHeaderIndices.size())
+	if (id < m_workingFileHeaderIndices.size())
 	{
-		const uint32 workingFileIndex = m_fileHeaderIndices[id];
-		m_fileDataVector[workingFileIndex] = new SDataRef(data);
+		const uint32 workingFileIndex = m_workingFileHeaderIndices[id];
+		m_workingFileDataVector[workingFileIndex] = new SDataRef(data);
 
 		// Rebuild headers with new data added.
-		BuildBigHeaderAndFileHeaders(m_workingHeader.bigHeader, m_workingHeader.fileHeaders, m_fileDataVector);
+		BuildBigHeaderAndFileHeaders(m_workingHeader.bigHeader, m_workingHeader.fileHeaders, m_workingFileDataVector);
 
 		if (immediateWriteOut)
 		{
@@ -705,10 +705,10 @@ bool CBIGFile::WriteDataToCurrentFile(const TData& data, bool immediateWriteOut)
 bool CBIGFile::HasPendingFileChanges() const
 {
 	bool hasChanges = false;
-	const uint32 fileCount = m_fileDataVector.size();
+	const uint32 fileCount = m_workingFileDataVector.size();
 	for (uint32 fileIndex = 0; fileIndex < fileCount; ++fileIndex)
 	{
-		if (!m_fileDataVector[fileIndex]->data.empty())
+		if (!m_workingFileDataVector[fileIndex]->data.empty())
 		{
 			hasChanges = true;
 			break;
@@ -759,7 +759,7 @@ bool CBIGFile::WriteOutPendingFileChanges()
 
 				for (; workingFileIndex < workingFileCount; ++workingFileIndex)
 				{
-					const TDataPtr& newFileDataPtr = m_fileDataVector[workingFileIndex];
+					const TDataPtr& newFileDataPtr = m_workingFileDataVector[workingFileIndex];
 
 					if (!newFileDataPtr.get())
 					{
@@ -802,7 +802,7 @@ bool CBIGFile::WriteOutPendingFileChanges()
 							}
 							m_physicalHeader.Copy(m_workingHeader);
 							ClearPendingFileChanges();
-							BuildFileHeaderIndices(m_fileHeaderIndices, m_workingHeader.fileHeaders);
+							BuildFileHeaderIndices(m_workingFileHeaderIndices, m_workingHeader.fileHeaders);
 
 							newFileCreated = false;
 							m_hasPendingFileChanges = false;
@@ -826,10 +826,10 @@ bool CBIGFile::WriteOutPendingFileChanges()
 void CBIGFile::ClearPendingFileChanges()
 {
 	// Clears the data at each index in the data vector and keeps its size
-	const uint32 fileCount = m_fileDataVector.size();
+	const uint32 fileCount = m_workingFileDataVector.size();
 	for (uint32 fileIndex = 0; fileIndex < fileCount; ++fileIndex)
 	{
-		m_fileDataVector[fileIndex].reset();
+		m_workingFileDataVector[fileIndex].reset();
 	}
 }
 

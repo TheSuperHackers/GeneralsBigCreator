@@ -247,10 +247,10 @@ private:
 	SBigFullHeader m_physicalHeader;
 
 	// File data that exists in memory only and can be written to .big file
-	TDataPtrVector m_fileDataVector;
+	TDataPtrVector m_workingFileDataVector;
 
 	// Contains indexes to all usable files inside .big file
-	TIntegers m_fileHeaderIndices;
+	TIntegers m_workingFileHeaderIndices;
 
 	std::wstring m_bigFileName;
 	std::fstream m_fstream;
