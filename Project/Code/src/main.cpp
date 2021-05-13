@@ -55,7 +55,7 @@ void InitRandom()
 
 void Welcome()
 {
-	std::cout << "Generals Big Creator 1.2 by xezon" << std::endl;
+	std::cout << "Generals Big Creator 1.3 by xezon" << std::endl;
 }
 
 bool ExtractBigFile(const SOptions& options)
