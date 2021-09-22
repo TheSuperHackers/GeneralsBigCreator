@@ -23,3 +23,6 @@ v1.1:
 
 v1.2
 - Added messages for operation success and failure
+
+v1.3
+- Fixed issues with BIG file data read and write
